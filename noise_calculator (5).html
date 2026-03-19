@@ -1,0 +1,775 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AcuMap — Calculadora de Ruido</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/geotiff@2.1.3/dist-browser/geotiff.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0d0f14;--panel:#13161d;--panel2:#1a1e28;--border:#252a38;--accent:#00e5a0;--warn:#ffc547;--text:#e2e8f0;--muted:#64748b;--emitter:#ff6b35;--receptor:#00e5a0;--font-mono:'Space Mono',monospace;--font:'DM Sans',sans-serif}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:var(--font)}
+#app{display:flex;height:100vh}
+#sidebar{width:320px;min-width:320px;background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column;z-index:1000;overflow:hidden}
+#header{padding:20px 20px 16px;border-bottom:1px solid var(--border);background:var(--bg)}
+#header .logo{font-family:var(--font-mono);font-size:18px;font-weight:700;color:var(--accent);letter-spacing:-.5px}
+#header .logo span{color:var(--muted)}
+#header .subtitle{font-size:11px;color:var(--muted);margin-top:3px;letter-spacing:1px;text-transform:uppercase}
+#tools{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;gap:8px}
+.tool-btn{flex:1;padding:9px 8px;border-radius:8px;border:1px solid var(--border);background:var(--panel2);color:var(--muted);font-family:var(--font);font-size:12px;font-weight:500;cursor:pointer;transition:all .15s;display:flex;flex-direction:column;align-items:center;gap:5px}
+.tool-btn .icon{font-size:18px}
+.tool-btn:hover{border-color:var(--accent);color:var(--text)}
+.tool-btn.ae{background:rgba(255,107,53,.12);border-color:var(--emitter);color:var(--emitter)}
+.tool-btn.ar{background:rgba(0,229,160,.12);border-color:var(--receptor);color:var(--receptor)}
+.tool-btn.ad{background:rgba(239,68,68,.12);border-color:#ef4444;color:#ef4444}
+#scroll-area{flex:1;overflow-y:auto;padding:14px 16px;display:flex;flex-direction:column;gap:14px}
+#scroll-area::-webkit-scrollbar{width:4px}
+#scroll-area::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+.section-label{font-family:var(--font-mono);font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;display:flex;align-items:center;gap:6px;margin-bottom:8px}
+.section-label::after{content:'';flex:1;height:1px;background:var(--border)}
+.emitter-card{background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:12px;transition:border-color .15s;animation:fadeIn .2s ease}
+.emitter-card:hover{border-color:rgba(255,107,53,.4)}
+@keyframes fadeIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
+.emitter-card-header{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.emitter-dot{width:10px;height:10px;border-radius:50%;background:var(--emitter);box-shadow:0 0 6px var(--emitter);flex-shrink:0}
+.emitter-name{font-family:var(--font-mono);font-size:12px;color:var(--text);flex:1}
+.emitter-del{background:none;border:none;color:var(--muted);cursor:pointer;font-size:18px;line-height:1;padding:2px;transition:color .15s}
+.emitter-del:hover{color:#ef4444}
+.emitter-coords{font-size:10px;color:var(--muted);font-family:var(--font-mono);margin-bottom:10px}
+.db-row{display:flex;align-items:center;gap:8px}
+.db-label{font-size:11px;color:var(--muted);white-space:nowrap}
+.db-input{flex:1;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--emitter);font-family:var(--font-mono);font-size:14px;font-weight:700;padding:6px 10px;text-align:right;width:80px;transition:border-color .15s;-moz-appearance:textfield}
+.db-input::-webkit-outer-spin-button,.db-input::-webkit-inner-spin-button{-webkit-appearance:none}
+.db-input:focus{outline:none;border-color:var(--emitter)}
+.db-unit{font-family:var(--font-mono);font-size:12px;color:var(--muted)}
+.emitter-dist{margin-top:8px;font-size:11px;color:var(--muted);display:flex;justify-content:space-between;align-items:center;padding-top:8px;border-top:1px solid var(--border)}
+.emitter-contribution{font-family:var(--font-mono);font-size:13px;color:var(--warn);font-weight:700}
+.receptor-card{background:rgba(0,229,160,.05);border:1px solid rgba(0,229,160,.25);border-radius:10px;padding:12px;animation:fadeIn .2s ease}
+.receptor-header{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.receptor-dot{width:10px;height:10px;border-radius:50%;background:var(--receptor);box-shadow:0 0 6px var(--receptor)}
+.receptor-name{font-family:var(--font-mono);font-size:12px;color:var(--receptor);flex:1}
+.receptor-del{background:none;border:none;color:var(--muted);cursor:pointer;font-size:18px;padding:2px;transition:color .15s}
+.receptor-del:hover{color:#ef4444}
+.receptor-coords{font-size:10px;color:var(--muted);font-family:var(--font-mono)}
+#result-panel{border-top:1px solid var(--border);padding:16px;background:var(--bg)}
+.result-label{font-family:var(--font-mono);font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:12px}
+.result-value{font-family:var(--font-mono);font-size:42px;font-weight:700;line-height:1;transition:color .3s}
+.result-unit{font-size:16px;font-weight:400;color:var(--muted)}
+.result-bar-bg{margin-top:12px;height:6px;background:var(--panel2);border-radius:3px;overflow:hidden}
+.result-bar{height:100%;border-radius:3px;transition:width .4s cubic-bezier(.4,0,.2,1),background .3s;width:0%}
+.result-desc{margin-top:8px;font-size:11px;color:var(--muted);display:flex;justify-content:space-between;align-items:center}
+.result-badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;font-family:var(--font-mono)}
+.formula-row{margin-top:10px;padding:8px 10px;background:var(--panel2);border-radius:6px;font-family:var(--font-mono);font-size:10px;color:var(--muted);line-height:1.6;white-space:pre-wrap;word-break:break-all}
+#map{flex:1;position:relative}
+.empty-hint{text-align:center;padding:20px 10px;color:var(--muted);font-size:12px;line-height:1.7}
+.empty-hint .big{font-size:28px;margin-bottom:8px}
+#statusbar{position:absolute;bottom:24px;left:50%;transform:translateX(-50%);background:var(--panel);border:1px solid var(--border);border-radius:20px;padding:8px 18px;font-size:12px;color:var(--muted);font-family:var(--font-mono);z-index:999;pointer-events:none;white-space:nowrap}
+#statusbar.ae{color:var(--emitter);border-color:var(--emitter)}
+#statusbar.ar{color:var(--receptor);border-color:var(--receptor)}
+.ref-dist-row{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.ref-dist-label{font-size:11px;color:var(--muted)}
+.ref-dist-input{width:64px;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-family:var(--font-mono);font-size:12px;padding:4px 8px;text-align:right;-moz-appearance:textfield}
+.ref-dist-input::-webkit-outer-spin-button,.ref-dist-input::-webkit-inner-spin-button{-webkit-appearance:none}
+.ref-dist-input:focus{outline:none;border-color:var(--accent)}
+.h-row{display:flex;align-items:center;gap:6px;margin-top:4px}
+.h-label{font-size:11px;color:var(--muted);flex:1}
+.h-input{width:52px;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-family:var(--font-mono);font-size:12px;padding:4px 8px;text-align:right;-moz-appearance:textfield}
+.h-input::-webkit-outer-spin-button,.h-input::-webkit-inner-spin-button{-webkit-appearance:none}
+.h-input:focus{outline:none;border-color:var(--accent)}
+/* Leaflet popup */
+.leaflet-popup-content-wrapper{background:var(--panel);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font);box-shadow:0 8px 32px rgba(0,0,0,.6)}
+.leaflet-popup-tip{background:var(--panel)}
+.leaflet-popup-content{margin:10px 14px;font-size:13px}
+/* Map control buttons */
+.map-ctrl-btn{width:30px;height:30px;display:flex!important;align-items:center;justify-content:center;font-size:15px;cursor:pointer;background:#1a1e28!important;color:#94a3b8!important;border:none!important;border-bottom:1px solid #252a38!important;transition:all .15s!important;padding:0!important;text-decoration:none!important}
+.map-ctrl-btn:last-child{border-bottom:none!important;border-radius:0 0 4px 4px!important}
+.map-ctrl-btn:first-child{border-radius:4px 4px 0 0!important}
+.map-ctrl-btn:hover{background:#252a38!important;color:#e2e8f0!important}
+.map-ctrl-btn.active{background:#00e5a0!important;color:#0d0f14!important;font-weight:700!important}
+.map-ctrl-btn.loading{background:#ffc547!important;color:#0d0f14!important}
+.leaflet-bar{border:1px solid #252a38!important;box-shadow:0 2px 12px rgba(0,0,0,.5)!important}
+/* Isophone legend */
+#iso-legend{position:absolute;bottom:56px;right:10px;z-index:900;background:rgba(19,22,29,.92);border:1px solid #252a38;border-radius:8px;padding:10px 12px;font-family:'Space Mono',monospace;font-size:10px;pointer-events:none;display:none}
+#iso-legend.visible{display:block}
+.leg-title{color:#64748b;font-size:9px;margin-bottom:6px;letter-spacing:.8px;text-transform:uppercase}
+.leg-row{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+.leg-row:last-child{margin-bottom:0}
+.leg-swatch{width:14px;height:14px;border-radius:3px;flex-shrink:0}
+.leg-label{color:#94a3b8}
+/* Info badges (top-right) */
+.map-badge{position:absolute;z-index:900;background:rgba(19,22,29,.92);border:1px solid #252a38;border-radius:6px;padding:5px 10px;font-family:'Space Mono',monospace;font-size:10px;color:#64748b;pointer-events:none;display:none;right:10px}
+.map-badge.visible{display:block}
+#bld-badge{top:60px}
+#dem-badge{top:90px}
+</style>
+</head>
+<body>
+<div id="app">
+<div id="sidebar">
+  <div id="header">
+    <div class="logo">Acu<span>Map</span></div>
+    <div class="subtitle">Calculadora de Ruido Ambiental</div>
+  </div>
+  <div id="tools">
+    <button class="tool-btn" id="btn-emitter" onclick="setMode('emitter')"><span class="icon">📡</span>Emisor</button>
+    <button class="tool-btn" id="btn-receptor" onclick="setMode('receptor')"><span class="icon">🎯</span>Receptor</button>
+    <button class="tool-btn" id="btn-delete" onclick="setMode('delete')"><span class="icon">🗑️</span>Borrar</button>
+    <button class="tool-btn" onclick="clearAll()" style="flex:.7"><span class="icon">✕</span>Reset</button>
+  </div>
+  <div id="scroll-area">
+    <div>
+      <div class="section-label">Parámetros</div>
+      <div class="ref-dist-row">
+        <span class="ref-dist-label">Distancia de referencia (d₀):</span>
+        <input class="ref-dist-input" type="number" id="refDist" value="1" min="0.1" step="0.5" onchange="calculate()">
+        <span style="font-size:11px;color:var(--muted)">m</span>
+      </div>
+      <div class="h-row">
+        <span class="h-label">Altura fuente emisora (hs):</span>
+        <input class="h-input" type="number" id="srcH" value="5" min="0" step="0.5" onchange="calculate()">
+        <span style="font-size:11px;color:var(--muted)">m</span>
+      </div>
+      <div class="h-row">
+        <span class="h-label">Altura receptor (hr):</span>
+        <input class="h-input" type="number" id="recH" value="4" min="0" step="0.5" onchange="calculate()">
+        <span style="font-size:11px;color:var(--muted)">m</span>
+      </div>
+      <div style="font-size:10px;color:var(--muted);line-height:1.5;margin-top:6px">hs y hr se suman a la elevación del terreno cuando el MDT está activo.</div>
+    </div>
+    <div>
+      <div class="section-label">Focos emisores</div>
+      <div id="emitters-list"><div class="empty-hint"><div class="big">📡</div>Selecciona <b>Emisor</b> y haz clic en el mapa</div></div>
+    </div>
+    <div>
+      <div class="section-label">Punto receptor</div>
+      <div id="receptor-container"><div class="empty-hint"><div class="big">🎯</div>Selecciona <b>Receptor</b> y haz clic en el mapa</div></div>
+    </div>
+  </div>
+  <div id="result-panel">
+    <div class="result-label">Nivel de ruido en receptor</div>
+    <div class="result-value" id="result-value" style="color:var(--muted)">— <span class="result-unit">dB(A)</span></div>
+    <div class="result-bar-bg"><div class="result-bar" id="result-bar"></div></div>
+    <div class="result-desc"><span id="result-desc">Sin datos suficientes</span><span id="result-badge"></span></div>
+    <div class="formula-row" id="formula-box">L(d) = Lref − 20·log₁₀(d/d₀) − ΔLmaekawa
+Ltotal = 10·log₁₀( Σ 10^(Lᵢ/10) )</div>
+  </div>
+</div>
+
+<div id="map">
+  <div id="statusbar">Selecciona una herramienta para comenzar</div>
+  <div id="iso-legend">
+    <div class="leg-title">Isofonas dB(A)</div>
+    <div class="leg-row"><div class="leg-swatch" style="background:rgba(239,83,80,.7)"></div><span class="leg-label">&gt; 75</span></div>
+    <div class="leg-row"><div class="leg-swatch" style="background:rgba(255,138,101,.65)"></div><span class="leg-label">70 – 75</span></div>
+    <div class="leg-row"><div class="leg-swatch" style="background:rgba(255,183,77,.6)"></div><span class="leg-label">65 – 70</span></div>
+    <div class="leg-row"><div class="leg-swatch" style="background:rgba(255,241,118,.55)"></div><span class="leg-label">55 – 65</span></div>
+    <div class="leg-row"><div class="leg-swatch" style="background:rgba(129,199,132,.5)"></div><span class="leg-label">45 – 55</span></div>
+    <div class="leg-row"><div class="leg-swatch" style="background:rgba(100,181,246,.45)"></div><span class="leg-label">&lt; 45</span></div>
+  </div>
+  <div class="map-badge" id="bld-badge"></div>
+  <div class="map-badge" id="dem-badge"></div>
+</div>
+</div>
+
+<script>
+// ===================== STATE =====================
+var mode=null, emitters=[], receptor=null;
+var emitterMarkers=[], receptorMarker=null, lineLayer;
+var emitterCount=0;
+var pnoaVisible=true, isoVisible=false, bldVisible=false, demVisible=false;
+var pnoaLayer=null, isoLayer=null;
+var buildings=[], bldPolygons=[];
+var dem=null; // {data,width,height,west,east,south,north}
+var bldFetchTimer=null, demFetchTimer=null;
+var REF_LAT=43.535, REF_LNG=-5.66;
+
+// ===================== MAP INIT =====================
+var map=L.map('map',{center:[REF_LAT,REF_LNG],zoom:15,zoomControl:false});
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{attribution:'© OpenStreetMap © CARTO',maxZoom:20}).addTo(map);
+pnoaLayer=L.tileLayer.wms('https://www.ign.es/wms-inspire/pnoa-ma',{
+  layers:'OI.OrthoimageCoverage',format:'image/jpeg',transparent:false,
+  version:'1.3.0',attribution:'© IGN España — PNOA',maxZoom:20
+}).addTo(map);
+// Labels pane sits above tiles (default tilePanez-index=200) and above PNOA
+map.createPane('labelsPane');
+map.getPane('labelsPane').style.zIndex=350;
+map.getPane('labelsPane').style.pointerEvents='none';
+var labelsLayer=L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png',
+  {attribution:'© OpenStreetMap © CARTO',maxZoom:20,pane:'labelsPane',opacity:1}).addTo(map);
+var labelsVisible=true;
+lineLayer=L.layerGroup().addTo(map);
+
+// ===================== CUSTOM MAP CONTROLS =====================
+var MapControls=L.Control.extend({
+  options:{position:'topright'},
+  onAdd:function(){
+    var c=L.DomUtil.create('div','leaflet-bar');
+    function mkBtn(id,icon,title,fn,active){
+      var b=L.DomUtil.create('a','map-ctrl-btn',c);
+      b.innerHTML=icon; b.title=title; b.href='#'; b.id=id;
+      if(active)b.classList.add('active');
+      L.DomEvent.on(b,'click',function(e){L.DomEvent.preventDefault(e);L.DomEvent.stopPropagation(e);fn();});
+      return b;
+    }
+    mkBtn('pnoa-btn','🛰','Ortofoto PNOA (IGN)',togglePNOA,true);
+    mkBtn('lbl-btn','🗺','Callejero / etiquetas',toggleLabels,true);
+    mkBtn('iso-btn','〰','Mapa de isofonas',toggleIso,false);
+    mkBtn('bld-btn','🏢','Edificios OSM (Maekawa)',toggleBuildings,false);
+    mkBtn('dem-btn','🏔','MDT25 IGN (relieve)',toggleDEM,false);
+    return c;
+  }
+});
+L.control.zoom({position:'topright'}).addTo(map);
+new MapControls().addTo(map);
+
+// ===================== TOGGLE FUNCTIONS =====================
+function togglePNOA(){
+  pnoaVisible=!pnoaVisible;
+  pnoaVisible?map.addLayer(pnoaLayer):map.removeLayer(pnoaLayer);
+  document.getElementById('pnoa-btn').classList.toggle('active',pnoaVisible);
+}
+function toggleLabels(){
+  labelsVisible=!labelsVisible;
+  labelsVisible?map.addLayer(labelsLayer):map.removeLayer(labelsLayer);
+  document.getElementById('lbl-btn').classList.toggle('active',labelsVisible);
+}
+function toggleIso(){
+  isoVisible=!isoVisible;
+  document.getElementById('iso-btn').classList.toggle('active',isoVisible);
+  document.getElementById('iso-legend').classList.toggle('visible',isoVisible);
+  drawIsophones();
+}
+function toggleBuildings(){
+  bldVisible=!bldVisible;
+  if(!bldVisible){
+    document.getElementById('bld-btn').classList.remove('active');
+    clearBuildingLayer();
+    document.getElementById('bld-badge').classList.remove('visible');
+    calculate();
+  } else {
+    document.getElementById('bld-btn').classList.add('active');
+    fetchBuildings();
+  }
+}
+function toggleDEM(){
+  demVisible=!demVisible;
+  if(!demVisible){
+    dem=null;
+    document.getElementById('dem-btn').classList.remove('active');
+    document.getElementById('dem-badge').classList.remove('visible');
+    calculate(); drawIsophones();
+  } else {
+    fetchDEM();
+  }
+}
+
+// ===================== GEOMETRY HELPERS =====================
+function toM(lat,lng){
+  return {x:(lng-REF_LNG)*Math.cos(REF_LAT*Math.PI/180)*111320, y:(lat-REF_LAT)*111320};
+}
+function segIntersect(ax,ay,bx,by,cx,cy,dx,dy){
+  var d1x=bx-ax,d1y=by-ay,d2x=dx-cx,d2y=dy-cy;
+  var cross=d1x*d2y-d1y*d2x;
+  if(Math.abs(cross)<1e-8)return null;
+  var t=((cx-ax)*d2y-(cy-ay)*d2x)/cross;
+  var u=((cx-ax)*d1y-(cy-ay)*d1x)/cross;
+  if(t>1e-4&&t<1-1e-4&&u>1e-4&&u<1-1e-4)return{x:ax+t*d1x,y:ay+t*d1y,t:t};
+  return null;
+}
+function findBuildingObstruction(sx,sy,rx,ry){
+  var best=null;
+  for(var i=0;i<buildings.length;i++){
+    var b=buildings[i],cc=b.coords;
+    for(var j=0;j<cc.length-1;j++){
+      var pt=segIntersect(sx,sy,rx,ry,cc[j].x,cc[j].y,cc[j+1].x,cc[j+1].y);
+      if(pt&&(!best||b.height>best.height))best={x:pt.x,y:pt.y,height:b.height,t:pt.t};
+    }
+  }
+  return best;
+}
+
+// ===================== DEM / TERRAIN =====================
+function getElevation(lat,lng){
+  if(!dem)return 0;
+  var tx=(lng-dem.west)/(dem.east-dem.west);
+  var ty=(dem.north-lat)/(dem.north-dem.south);
+  if(tx<0||tx>1||ty<0||ty>1)return 0;
+  var px=tx*(dem.width-1), py=ty*(dem.height-1);
+  var x0=Math.floor(px), y0=Math.floor(py);
+  var x1=Math.min(x0+1,dem.width-1), y1=Math.min(y0+1,dem.height-1);
+  var fx=px-x0, fy=py-y0;
+  var g=dem.data;
+  var v=function(r,c){var v2=g[r*dem.width+c];return(v2==null||v2<-1000)?0:v2;};
+  return v(y0,x0)*(1-fx)*(1-fy)+v(y0,x1)*fx*(1-fy)+v(y1,x0)*(1-fx)*fy+v(y1,x1)*fx*fy;
+}
+
+// Find point of maximum terrain/building obstruction along source→receiver path.
+// Returns {excess (m above LOS), t, lat, lng, absH (absolute barrier height), type}
+function findMaxObstruction(srcLat,srcLng,srcAbsH,recLat,recLng,recAbsH){
+  var NTERRAIN=40;
+  var best=null;
+
+  // Terrain profile sampling
+  if(demVisible&&dem){
+    for(var i=1;i<NTERRAIN-1;i++){
+      var t=i/(NTERRAIN-1);
+      var lat=srcLat+t*(recLat-srcLat);
+      var lng=srcLng+t*(recLng-srcLng);
+      var terrH=getElevation(lat,lng);
+      var losH=srcAbsH+t*(recAbsH-srcAbsH);
+      var excess=terrH-losH;
+      if(!best||excess>best.excess)
+        best={excess:excess,t:t,lat:lat,lng:lng,absH:terrH,type:'terrain'};
+    }
+  }
+
+  // Building obstruction
+  if(bldVisible&&buildings.length>0){
+    var sm=toM(srcLat,srcLng),rm=toM(recLat,recLng);
+    var bObs=findBuildingObstruction(sm.x,sm.y,rm.x,rm.y);
+    if(bObs){
+      var bLat=srcLat+bObs.t*(recLat-srcLat);
+      var bLng=srcLng+bObs.t*(recLng-srcLng);
+      var terrainBase=demVisible?getElevation(bLat,bLng):0;
+      var bTopH=terrainBase+bObs.height;
+      var losAtB=srcAbsH+bObs.t*(recAbsH-srcAbsH);
+      var bExcess=bTopH-losAtB;
+      if(!best||bExcess>best.excess)
+        best={excess:bExcess,t:bObs.t,lat:bLat,lng:bLng,absH:bTopH,type:'building'};
+    }
+  }
+  return best;
+}
+
+// Maekawa attenuation (dB) at 500 Hz. All coords in local metric (m), heights absolute (m).
+function maekawa(sx,sy,sz,rx,ry,rz,bx,by,bz){
+  var lambda=0.68; // 340/500
+  var A=Math.sqrt((bx-sx)*(bx-sx)+(by-sy)*(by-sy)+(bz-sz)*(bz-sz));
+  var B=Math.sqrt((rx-bx)*(rx-bx)+(ry-by)*(ry-by)+(rz-bz)*(rz-bz));
+  var d=Math.sqrt((rx-sx)*(rx-sx)+(ry-sy)*(ry-sy)+(rz-sz)*(rz-sz));
+  var delta=A+B-d;
+  var N=2*delta/lambda;
+  if(N<-0.19)return 0;
+  return Math.max(0,10*Math.log10(3+20*N));
+}
+
+// Complete level from emitter to a point, applying Maekawa with terrain+buildings
+function levelFrom(em,toLat,toLng){
+  var d0=parseFloat(document.getElementById('refDist').value)||1;
+  var sh=parseFloat(document.getElementById('srcH').value)||5;
+  var rh=parseFloat(document.getElementById('recH').value)||4;
+  var d=haversine(em.lat,em.lng,toLat,toLng);
+  if(d<0.5)d=0.5;
+  var L=em.db-20*Math.log10(d/d0);
+  if(!bldVisible&&!demVisible)return L;
+
+  var srcTerrH=demVisible?getElevation(em.lat,em.lng):0;
+  var recTerrH=demVisible?getElevation(toLat,toLng):0;
+  var srcAbsH=srcTerrH+sh;
+  var recAbsH=recTerrH+rh;
+
+  var obs=findMaxObstruction(em.lat,em.lng,srcAbsH,toLat,toLng,recAbsH);
+  if(!obs||obs.excess<=0.1)return L;
+
+  // Convert to metric for Maekawa
+  REF_LAT=(em.lat+toLat)/2; REF_LNG=(em.lng+toLng)/2;
+  var sm=toM(em.lat,em.lng), rm=toM(toLat,toLng), bm=toM(obs.lat,obs.lng);
+  var att=maekawa(sm.x,sm.y,srcAbsH,rm.x,rm.y,recAbsH,bm.x,bm.y,obs.absH);
+  return L-att;
+}
+
+// ===================== FETCH BUILDINGS (OSM/Overpass) =====================
+function clearBuildingLayer(){
+  bldPolygons.forEach(function(p){map.removeLayer(p);});
+  bldPolygons=[]; buildings=[];
+}
+function fetchBuildings(){
+  var btn=document.getElementById('bld-btn');
+  btn.classList.add('loading'); btn.innerHTML='⏳';
+  var b=map.getBounds(), s=b.getSouth(),w=b.getWest(),n=b.getNorth(),e=b.getEast();
+  REF_LAT=(s+n)/2; REF_LNG=(w+e)/2;
+  var q='[out:json][timeout:20];(way["building"]('+s+','+w+','+n+','+e+'););out body;>;out skel qt;';
+  fetch('https://overpass-api.de/api/interpreter?data='+encodeURIComponent(q))
+    .then(function(r){return r.json();}).then(function(data){
+    clearBuildingLayer();
+    var nodes={};
+    data.elements.forEach(function(el){if(el.type==='node')nodes[el.id]={lat:el.lat,lng:el.lon};});
+    var count=0;
+    data.elements.forEach(function(el){
+      if(el.type!=='way'||!el.tags||!el.tags.building)return;
+      var lls=el.nodes.map(function(nid){return nodes[nid];}).filter(Boolean);
+      if(lls.length<3)return;
+      var h=8;
+      if(el.tags.height)h=parseFloat(el.tags.height)||8;
+      else if(el.tags['building:levels'])h=parseFloat(el.tags['building:levels'])*3||8;
+      var coords=lls.map(function(ll){return toM(ll.lat,ll.lng);});
+      if(coords.length&&(coords[0].x!==coords[coords.length-1].x))coords.push(coords[0]);
+      buildings.push({coords:coords,height:h});
+      var poly=L.polygon(lls.map(function(ll){return[ll.lat,ll.lng];}),
+        {color:'#4a90d9',weight:1,fillColor:'#1e3a5f',fillOpacity:0.45,opacity:0.7}).addTo(map);
+      poly.bindTooltip('h ≈ '+h.toFixed(0)+' m',{className:'leaflet-popup-content-wrapper',sticky:true});
+      bldPolygons.push(poly); count++;
+    });
+    btn.classList.remove('loading'); btn.innerHTML='🏢';
+    var bd=document.getElementById('bld-badge');
+    bd.textContent='🏢 '+count+' edificios · Maekawa'; bd.classList.add('visible');
+    calculate(); drawIsophones();
+  }).catch(function(){
+    btn.classList.remove('loading'); btn.innerHTML='🏢';
+    alert('Error al cargar edificios de Overpass API.');
+  });
+}
+
+// ===================== FETCH DEM (IGN WCS MDT25) =====================
+async function fetchDEM(){
+  var btn=document.getElementById('dem-btn');
+  btn.classList.add('loading'); btn.innerHTML='⏳';
+  var b=map.getBounds().pad(0.05);
+  var w=b.getWest(),e=b.getEast(),s=b.getSouth(),n=b.getNorth();
+
+  // IGN WCS INSPIRE — MDT25 (25m resolution, ETRS89 geographic = EPSG:4258)
+  var url='https://servicios.idee.es/wcs-inspire/mdt'
+    +'?SERVICE=WCS&VERSION=2.0.1&REQUEST=GetCoverage'
+    +'&COVERAGEID=Elevacion4258_25'
+    +'&SUBSET=Long('+w+','+e+')'
+    +'&SUBSET=Lat('+s+','+n+')'
+    +'&format=image/tiff';
+
+  try {
+    var resp=await fetch(url,{mode:'cors'});
+    if(!resp.ok)throw new Error('HTTP '+resp.status);
+    var contentType=resp.headers.get('content-type')||'';
+    if(contentType.indexOf('xml')!==-1||contentType.indexOf('html')!==-1){
+      var txt=await resp.text();
+      throw new Error('El servidor devolvió XML/HTML en lugar de GeoTIFF. Respuesta: '+txt.substring(0,200));
+    }
+    var buf=await resp.arrayBuffer();
+    var tiff=await GeoTIFF.fromArrayBuffer(buf);
+    var img=await tiff.getImage();
+    var rasters=await img.readRasters();
+    var raw=rasters[0];
+    var bbox=img.getBoundingBox();
+    // Filter nodata
+    var clean=new Float32Array(raw.length);
+    for(var i=0;i<raw.length;i++)clean[i]=(raw[i]<-1000||raw[i]>9000)?0:raw[i];
+    dem={data:clean,width:img.getWidth(),height:img.getHeight(),
+         west:bbox[0],south:bbox[1],east:bbox[2],north:bbox[3]};
+    btn.classList.remove('loading'); btn.classList.add('active'); btn.innerHTML='🏔';
+    var dd=document.getElementById('dem-badge');
+    dd.textContent='🏔 MDT25 IGN · '+dem.width+'×'+dem.height+' px';
+    dd.classList.add('visible');
+    calculate(); drawIsophones();
+  } catch(err){
+    dem=null; demVisible=false;
+    btn.classList.remove('loading','active'); btn.innerHTML='🏔';
+    console.error('DEM error:',err);
+    var msg='No se pudo cargar el MDT25 del IGN (WCS INSPIRE).\n\n'
+      +'Error: '+err.message+'\n\n'
+      +'Posibles causas:\n'
+      +'• El servicio WCS del IGN bloqueó la petición CORS.\n'
+      +'• Prueba a abrir este archivo desde un servidor local:\n'
+      +'  python -m http.server 8080  →  http://localhost:8080/\n'
+      +'• O usa una extensión de navegador que elimine CORS.';
+    alert(msg);
+  }
+}
+
+// Reload DEM on map move when active
+map.on('moveend',function(){
+  if(bldVisible){clearTimeout(bldFetchTimer);bldFetchTimer=setTimeout(fetchBuildings,800);}
+  if(demVisible&&dem){
+    // Check if map moved outside current DEM extent
+    var b=map.getBounds();
+    if(!dem||b.getWest()<dem.west||b.getEast()>dem.east||b.getSouth()<dem.south||b.getNorth()>dem.north){
+      clearTimeout(demFetchTimer);demFetchTimer=setTimeout(fetchDEM,1000);
+    }
+  }
+});
+
+// ===================== ISOPHONE CANVAS LAYER =====================
+var IsoLayer=L.Layer.extend({
+  onAdd:function(m){
+    this._map=m;
+    this._canvas=document.createElement('canvas');
+    this._canvas.style.cssText='position:absolute;top:0;left:0;pointer-events:none;z-index:400';
+    m.getPanes().overlayPane.appendChild(this._canvas);
+    m.on('moveend zoomend resize',this._draw,this);
+    this._draw();
+  },
+  onRemove:function(m){
+    m.off('moveend zoomend resize',this._draw,this);
+    if(this._canvas.parentNode)this._canvas.parentNode.removeChild(this._canvas);
+  },
+  redraw:function(){this._draw();},
+  _draw:function(){
+    var m=this._map,sz=m.getSize(),cv=this._canvas;
+    cv.width=sz.x; cv.height=sz.y;
+    var tl=m.containerPointToLayerPoint([0,0]);
+    L.DomUtil.setPosition(cv,tl);
+    var ctx=cv.getContext('2d');
+    ctx.clearRect(0,0,sz.x,sz.y);
+    if(!isoVisible||emitters.length===0)return;
+    var step=(bldVisible||demVisible)?8:4;
+    var cols=Math.ceil(sz.x/step)+1,rows=Math.ceil(sz.y/step)+1;
+    var grid=new Float32Array(cols*rows);
+    for(var r=0;r<rows;r++){
+      for(var c=0;c<cols;c++){
+        var ll=m.containerPointToLatLng(L.point(c*step,r*step));
+        var sp=0;
+        for(var i=0;i<emitters.length;i++){
+          var L2=levelFrom(emitters[i],ll.lat,ll.lng);
+          sp+=Math.pow(10,L2/10);
+        }
+        grid[r*cols+c]=10*Math.log10(sp);
+      }
+    }
+    // Zone fill
+    var zones=[
+      {min:75,r:239,g:83,b:80,a:155},{min:70,r:255,g:138,b:101,a:140},
+      {min:65,r:255,g:183,b:77,a:125},{min:55,r:255,g:241,b:118,a:110},
+      {min:45,r:129,g:199,b:132,a:95},{min:-9999,r:100,g:181,b:246,a:75}
+    ];
+    var imgData=ctx.createImageData(sz.x,sz.y);
+    var px=imgData.data;
+    for(var r=0;r<rows;r++){
+      for(var c=0;c<cols;c++){
+        var val=grid[r*cols+c];
+        var z=zones.length-1;
+        for(var zi=0;zi<zones.length;zi++){if(val>=zones[zi].min){z=zi;break;}}
+        var zn=zones[z];
+        for(var dr=0;dr<step;dr++){
+          var py2=r*step+dr; if(py2>=sz.y)break;
+          for(var dc=0;dc<step;dc++){
+            var px2=c*step+dc; if(px2>=sz.x)break;
+            var idx=(py2*sz.x+px2)*4;
+            px[idx]=zn.r;px[idx+1]=zn.g;px[idx+2]=zn.b;px[idx+3]=zn.a;
+          }
+        }
+      }
+    }
+    ctx.putImageData(imgData,0,0);
+    // Contour lines (Marching Squares)
+    var lut=[
+      [],[['L','B']],[['B','R']],[['L','R']],[['T','R']],
+      [['T','R'],['L','B']],[['T','B']],[['T','L']],[['T','L']],
+      [['T','B']],[['T','L'],['B','R']],[['T','R']],[['L','R']],
+      [['B','R']],[['L','B']],[]
+    ];
+    var thresholds=[45,55,65,70,75];
+    var tColors=['#81c784','#fff176','#ffb74d','#ff8a65','#ef5350'];
+    ctx.save(); ctx.lineWidth=1.5;
+    for(var ti=0;ti<thresholds.length;ti++){
+      var th=thresholds[ti];
+      ctx.strokeStyle=tColors[ti]; ctx.beginPath();
+      for(var r=0;r<rows-1;r++){
+        for(var c=0;c<cols-1;c++){
+          var sq=(grid[r*cols+c]>=th?8:0)+(grid[r*cols+c+1]>=th?4:0)
+               +(grid[(r+1)*cols+c+1]>=th?2:0)+(grid[(r+1)*cols+c]>=th?1:0);
+          var segs=lut[sq]; if(!segs||!segs.length)continue;
+          var hs=step/2;
+          var mp={T:[c*step+hs,r*step],R:[c*step+step,r*step+hs],B:[c*step+hs,r*step+step],L:[c*step,r*step+hs]};
+          for(var s=0;s<segs.length;s++){
+            ctx.moveTo(mp[segs[s][0]][0],mp[segs[s][0]][1]);
+            ctx.lineTo(mp[segs[s][1]][0],mp[segs[s][1]][1]);
+          }
+        }
+      }
+      ctx.stroke();
+    }
+    ctx.lineWidth=3; ctx.font='bold 10px monospace'; ctx.textAlign='left';
+    var mc=Math.floor(cols/2);
+    for(var ti=0;ti<thresholds.length;ti++){
+      var th=thresholds[ti];
+      ctx.fillStyle=tColors[ti]; ctx.strokeStyle='rgba(13,15,20,.8)';
+      for(var r=1;r<rows-1;r++){
+        if((grid[r*cols+mc]>=th)!==(grid[(r+1)*cols+mc]>=th)){
+          ctx.strokeText(th+' dB',mc*step+hs+4,r*step+step);
+          ctx.fillText(th+' dB',mc*step+hs+4,r*step+step); break;
+        }
+      }
+    }
+    ctx.restore();
+  }
+});
+isoLayer=new IsoLayer().addTo(map);
+function drawIsophones(){if(isoLayer)isoLayer.redraw();}
+
+// ===================== ICONS =====================
+function emitterIcon(n){
+  return L.divIcon({className:'',html:'<div style="width:32px;height:32px;background:rgba(255,107,53,.18);border:2px solid #ff6b35;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:monospace;font-size:12px;font-weight:700;color:#ff6b35;box-shadow:0 0 12px rgba(255,107,53,.5)">'+n+'</div>',iconSize:[32,32],iconAnchor:[16,16]});
+}
+var rIcon=L.divIcon({className:'',html:'<div style="width:28px;height:28px;background:rgba(0,229,160,.18);border:2px solid #00e5a0;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;box-shadow:0 0 14px rgba(0,229,160,.6)">🎯</div>',iconSize:[28,28],iconAnchor:[14,14]});
+
+// ===================== MAP CLICK =====================
+map.on('click',function(e){
+  if(!mode)return;
+  var lat=e.latlng.lat,lng=e.latlng.lng;
+  if(mode==='emitter'){
+    emitterCount++;
+    var em={id:Date.now(),lat:lat,lng:lng,db:70,n:emitterCount};
+    emitters.push(em);
+    var mk=L.marker([lat,lng],{icon:emitterIcon(em.n)}).addTo(map);
+    mk.emId=em.id;
+    mk.on('click',function(){if(mode==='delete')removeEmitter(this.emId);});
+    emitterMarkers.push({id:em.id,marker:mk});
+    renderSidebar(); calculate();
+  } else if(mode==='receptor'){
+    if(receptorMarker)map.removeLayer(receptorMarker);
+    receptor={lat:lat,lng:lng};
+    receptorMarker=L.marker([lat,lng],{icon:rIcon}).addTo(map);
+    receptorMarker.on('click',function(){if(mode==='delete'){map.removeLayer(receptorMarker);receptor=null;receptorMarker=null;renderSidebar();calculate();}});
+    renderSidebar(); calculate();
+  }
+});
+
+function removeEmitter(id){
+  var i=emitters.findIndex(function(e){return e.id===id;});
+  if(i===-1)return;
+  emitters.splice(i,1);
+  var j=emitterMarkers.findIndex(function(m){return m.id===id;});
+  if(j!==-1){map.removeLayer(emitterMarkers[j].marker);emitterMarkers.splice(j,1);}
+  renderSidebar(); calculate();
+}
+function clearAll(){
+  emitters=[]; receptor=null; emitterCount=0;
+  emitterMarkers.forEach(function(m){map.removeLayer(m.marker);}); emitterMarkers=[];
+  if(receptorMarker)map.removeLayer(receptorMarker); receptorMarker=null;
+  lineLayer.clearLayers(); renderSidebar(); calculate();
+}
+function setMode(m){
+  mode=(mode===m)?null:m;
+  document.getElementById('btn-emitter').className='tool-btn'+(mode==='emitter'?' ae':'');
+  document.getElementById('btn-receptor').className='tool-btn'+(mode==='receptor'?' ar':'');
+  document.getElementById('btn-delete').className='tool-btn'+(mode==='delete'?' ad':'');
+  var sb=document.getElementById('statusbar');
+  if(mode==='emitter'){sb.textContent='📡 Clic en el mapa para añadir un foco emisor';sb.className='ae';}
+  else if(mode==='receptor'){sb.textContent='🎯 Clic en el mapa para situar el receptor';sb.className='ar';}
+  else if(mode==='delete'){sb.textContent='🗑️ Clic en un punto para eliminarlo';sb.className='';}
+  else{sb.textContent='Selecciona una herramienta para comenzar';sb.className='';}
+}
+
+// ===================== ACOUSTICS =====================
+function haversine(lat1,lon1,lat2,lon2){
+  var R=6371000,dLat=(lat2-lat1)*Math.PI/180,dLon=(lon2-lon1)*Math.PI/180;
+  var a=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)*Math.sin(dLon/2);
+  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+
+// ===================== RENDER SIDEBAR =====================
+function renderSidebar(){
+  var el=document.getElementById('emitters-list');
+  var rc=document.getElementById('receptor-container');
+  if(emitters.length===0){
+    el.innerHTML='<div class="empty-hint"><div class="big">📡</div>Selecciona <b>Emisor</b> y haz clic en el mapa</div>';
+  } else {
+    el.innerHTML='';
+    emitters.forEach(function(em){
+      var dist=receptor?haversine(em.lat,em.lng,receptor.lat,receptor.lng):null;
+      var contrib=receptor&&dist>0?levelFrom(em,receptor.lat,receptor.lng):null;
+      var srcH=demVisible?getElevation(em.lat,em.lng):0;
+      var d2=document.createElement('div');
+      d2.className='emitter-card';
+      d2.innerHTML='<div class="emitter-card-header"><div class="emitter-dot"></div>'
+        +'<div class="emitter-name">Emisor '+em.n+'</div>'
+        +'<button class="emitter-del" onclick="removeEmitter('+em.id+')">×</button></div>'
+        +'<div class="emitter-coords">'+em.lat.toFixed(5)+', '+em.lng.toFixed(5)
+        +(demVisible?' · z='+srcH.toFixed(0)+'m':'')+'</div>'
+        +'<div class="db-row"><span class="db-label">Nivel ref. (d₀):</span>'
+        +'<input class="db-input" type="number" value="'+em.db+'" min="0" max="200" step="0.5" onchange="updateDb('+em.id+',this.value)">'
+        +'<span class="db-unit">dB(A)</span></div>'
+        +(dist!==null?'<div class="emitter-dist"><span>d = '+(dist<1000?dist.toFixed(1)+' m':(dist/1000).toFixed(2)+' km')+'</span>'
+        +'<span class="emitter-contribution">'+(contrib!==null?contrib.toFixed(1)+' dB(A)':'—')+'</span></div>':'');
+      el.appendChild(d2);
+    });
+  }
+  if(!receptor){
+    rc.innerHTML='<div class="empty-hint"><div class="big">🎯</div>Selecciona <b>Receptor</b> y haz clic en el mapa</div>';
+  } else {
+    var recH=demVisible?getElevation(receptor.lat,receptor.lng):0;
+    rc.innerHTML='<div class="receptor-card"><div class="receptor-header"><div class="receptor-dot"></div>'
+      +'<div class="receptor-name">Punto receptor</div>'
+      +'<button class="receptor-del" onclick="deleteReceptor()">×</button></div>'
+      +'<div class="receptor-coords">'+receptor.lat.toFixed(5)+', '+receptor.lng.toFixed(5)
+      +(demVisible?' · z='+recH.toFixed(0)+'m':'')+'</div></div>';
+  }
+}
+function deleteReceptor(){
+  if(receptorMarker)map.removeLayer(receptorMarker);
+  receptor=null; receptorMarker=null; lineLayer.clearLayers(); renderSidebar(); calculate();
+}
+function updateDb(id,val){
+  var em=emitters.find(function(e){return e.id===id;});
+  if(em){em.db=parseFloat(val)||0; calculate(); renderSidebar();}
+}
+
+// ===================== CALCULATE =====================
+function calculate(){
+  lineLayer.clearLayers(); drawIsophones();
+  var rv=document.getElementById('result-value'), rb=document.getElementById('result-bar');
+  var rd=document.getElementById('result-desc'), rbg=document.getElementById('result-badge');
+  var fb=document.getElementById('formula-box');
+  if(!receptor||emitters.length===0){
+    rv.innerHTML='— <span class="result-unit">dB(A)</span>'; rv.style.color='var(--muted)';
+    rb.style.width='0%'; rd.textContent='Sin datos suficientes'; rbg.innerHTML='';
+    fb.textContent='L(d) = Lref − 20·log₁₀(d/d₀) − ΔLmaekawa\nLtotal = 10·log₁₀( Σ 10^(Lᵢ/10) )';
+    renderSidebar(); return;
+  }
+  var d0=parseFloat(document.getElementById('refDist').value)||1;
+  var sh=parseFloat(document.getElementById('srcH').value)||5;
+  var rh=parseFloat(document.getElementById('recH').value)||4;
+  var sumPow=0, lines=[];
+  emitters.forEach(function(em){
+    var d=haversine(em.lat,em.lng,receptor.lat,receptor.lng);
+    var Lfree=em.db-20*Math.log10(Math.max(d,0.5)/d0);
+    var Ldb=levelFrom(em,receptor.lat,receptor.lng);
+    var att=Lfree-Ldb;
+    sumPow+=Math.pow(10,Ldb/10);
+    var ds=d<1000?d.toFixed(0)+'m':(d/1000).toFixed(2)+'km';
+    var line='E'+em.n+': '+em.db+' − 20·log₁₀('+ds+'/'+d0+'m)';
+    if(att>0.1)line+=' − '+att.toFixed(1)+'dB [barrera]';
+    if(demVisible){
+      var sz=getElevation(em.lat,em.lng), rz=getElevation(receptor.lat,receptor.lng);
+      line+=' | z_s='+sz.toFixed(0)+'m z_r='+rz.toFixed(0)+'m';
+    }
+    line+=' = '+Ldb.toFixed(1)+' dB(A)'; lines.push(line);
+    // Draw line: blue=blocked, orange=free
+    var blocked=(att>0.5);
+    L.polyline([[em.lat,em.lng],[receptor.lat,receptor.lng]],
+      {color:blocked?'rgba(74,144,217,.7)':'rgba(255,107,53,.5)',weight:blocked?2:1.5,dashArray:'4 6'}).addTo(lineLayer);
+    // Mark barrier point
+    if(blocked){
+      var srcAbsH=demVisible?getElevation(em.lat,em.lng)+sh:sh;
+      var recAbsH=demVisible?getElevation(receptor.lat,receptor.lng)+rh:rh;
+      var obs=findMaxObstruction(em.lat,em.lng,srcAbsH,receptor.lat,receptor.lng,recAbsH);
+      if(obs){
+        var bColor=obs.type==='terrain'?'#a0c8a0':'#4a90d9';
+        L.circleMarker([obs.lat,obs.lng],{radius:5,color:bColor,fillColor:bColor,fillOpacity:.9,weight:2})
+          .bindTooltip((obs.type==='terrain'?'Relieve':'Edificio')+': h='+obs.absH.toFixed(0)+'m · ΔL='+att.toFixed(1)+' dB',
+            {className:'leaflet-popup-content-wrapper'}).addTo(lineLayer);
+      }
+    }
+  });
+  var Lt=10*Math.log10(sumPow);
+  if(emitters.length>1)lines.push('Σ combinado = '+Lt.toFixed(1)+' dB(A)');
+  var color,desc,badge;
+  if(Lt<45){color='#64b5f6';desc='Muy bajo — ambiente tranquilo';badge=['TRANQUILO','#64b5f6'];}
+  else if(Lt<55){color='#81c784';desc='Bajo — confortable';badge=['BAJO','#81c784'];}
+  else if(Lt<65){color='#fff176';desc='Moderado — perceptible';badge=['MODERADO','#fff176'];}
+  else if(Lt<70){color='#ffb74d';desc='Alto — molesto';badge=['ALTO','#ffb74d'];}
+  else if(Lt<75){color='#ff8a65';desc='Muy alto — perjudicial';badge=['MUY ALTO','#ff8a65'];}
+  else{color='#ef5350';desc='Excesivo — potencialmente dañino';badge=['EXCESIVO','#ef5350'];}
+  rv.innerHTML=Lt.toFixed(1)+' <span class="result-unit">dB(A)</span>'; rv.style.color=color;
+  rb.style.width=Math.min(100,(Lt/100)*100)+'%'; rb.style.background=color;
+  rd.textContent=desc;
+  rbg.innerHTML='<span class="result-badge" style="background:'+badge[1]+'22;color:'+badge[1]+';border:1px solid '+badge[1]+'44">'+badge[0]+'</span>';
+  fb.textContent=lines.join('\n');
+  renderSidebar();
+}
+
+renderSidebar();
+</script>
+</body>
+</html>
