@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AcuMap — Calculadora de Ruido</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0d0f14;--panel:#13161d;--panel2:#1a1e28;--border:#252a38;--accent:#00e5a0;--warn:#ffc547;--text:#e2e8f0;--muted:#64748b;--emitter:#ff6b35;--receptor:#00e5a0;--font-mono:'Space Mono',monospace;--font:'DM Sans',sans-serif}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:var(--font)}
+#app{display:flex;height:100vh}
+#sidebar{width:320px;min-width:320px;background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column;z-index:1000;overflow:hidden}
+#header{padding:20px 20px 16px;border-bottom:1px solid var(--border);background:var(--bg)}
+#header .logo{font-family:var(--font-mono);font-size:18px;font-weight:700;color:var(--accent);letter-spacing:-.5px}
+#header .logo span{color:var(--muted)}
+#header .subtitle{font-size:11px;color:var(--muted);margin-top:3px;letter-spacing:1px;text-transform:uppercase}
+#tools{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;gap:8px}
+.tool-btn{flex:1;padding:9px 8px;border-radius:8px;border:1px solid var(--border);background:var(--panel2);color:var(--muted);font-family:var(--font);font-size:12px;font-weight:500;cursor:pointer;transition:all .15s;display:flex;flex-direction:column;align-items:center;gap:5px}
+.tool-btn .icon{font-size:18px}
+.tool-btn:hover{border-color:var(--accent);color:var(--text)}
+.tool-btn.ae{background:rgba(255,107,53,.12);border-color:var(--emitter);color:var(--emitter)}
+.tool-btn.ar{background:rgba(0,229,160,.12);border-color:var(--receptor);color:var(--receptor)}
+.tool-btn.ad{background:rgba(239,68,68,.12);border-color:#ef4444;color:#ef4444}
+#scroll-area{flex:1;overflow-y:auto;padding:14px 16px;display:flex;flex-direction:column;gap:14px}
+#scroll-area::-webkit-scrollbar{width:4px}
+#scroll-area::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+.section-label{font-family:var(--font-mono);font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;display:flex;align-items:center;gap:6px}
+.section-label::after{content:'';flex:1;height:1px;background:var(--border)}
+.emitter-card{background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:12px;transition:border-color .15s;animation:fadeIn .2s ease}
+.emitter-card:hover{border-color:rgba(255,107,53,.4)}
+@keyframes fadeIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
+.emitter-card-header{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.emitter-dot{width:10px;height:10px;border-radius:50%;background:var(--emitter);box-shadow:0 0 6px var(--emitter);flex-shrink:0}
+.emitter-name{font-family:var(--font-mono);font-size:12px;color:var(--text);flex:1}
+.emitter-del{background:none;border:none;color:var(--muted);cursor:pointer;font-size:18px;line-height:1;padding:2px;transition:color .15s}
+.emitter-del:hover{color:#ef4444}
+.emitter-coords{font-size:10px;color:var(--muted);font-family:var(--font-mono);margin-bottom:10px}
+.db-row{display:flex;align-items:center;gap:8px}
+.db-label{font-size:11px;color:var(--muted);white-space:nowrap}
+.db-input{flex:1;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--emitter);font-family:var(--font-mono);font-size:14px;font-weight:700;padding:6px 10px;text-align:right;width:80px;transition:border-color .15s;-moz-appearance:textfield}
+.db-input::-webkit-outer-spin-button,.db-input::-webkit-inner-spin-button{-webkit-appearance:none}
+.db-input:focus{outline:none;border-color:var(--emitter)}
+.db-unit{font-family:var(--font-mono);font-size:12px;color:var(--muted)}
+.emitter-dist{margin-top:8px;font-size:11px;color:var(--muted);display:flex;justify-content:space-between;align-items:center;padding-top:8px;border-top:1px solid var(--border)}
+.emitter-contribution{font-family:var(--font-mono);font-size:13px;color:var(--warn);font-weight:700}
+.receptor-card{background:rgba(0,229,160,.05);border:1px solid rgba(0,229,160,.25);border-radius:10px;padding:12px;animation:fadeIn .2s ease}
+.receptor-header{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.receptor-dot{width:10px;height:10px;border-radius:50%;background:var(--receptor);box-shadow:0 0 6px var(--receptor)}
+.receptor-name{font-family:var(--font-mono);font-size:12px;color:var(--receptor);flex:1}
+.receptor-del{background:none;border:none;color:var(--muted);cursor:pointer;font-size:18px;padding:2px;transition:color .15s}
+.receptor-del:hover{color:#ef4444}
+.receptor-coords{font-size:10px;color:var(--muted);font-family:var(--font-mono)}
+#result-panel{border-top:1px solid var(--border);padding:16px;background:var(--bg)}
+.result-label{font-family:var(--font-mono);font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:12px}
+.result-value{font-family:var(--font-mono);font-size:42px;font-weight:700;line-height:1;transition:color .3s}
+.result-unit{font-size:16px;font-weight:400;color:var(--muted)}
+.result-bar-bg{margin-top:12px;height:6px;background:var(--panel2);border-radius:3px;overflow:hidden}
+.result-bar{height:100%;border-radius:3px;transition:width .4s cubic-bezier(.4,0,.2,1),background .3s;width:0%}
+.result-desc{margin-top:8px;font-size:11px;color:var(--muted);display:flex;justify-content:space-between;align-items:center}
+.result-badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;font-family:var(--font-mono)}
+.formula-row{margin-top:10px;padding:8px 10px;background:var(--panel2);border-radius:6px;font-family:var(--font-mono);font-size:10px;color:var(--muted);line-height:1.6;white-space:pre-wrap;word-break:break-all}
+#map{flex:1;position:relative}
+.empty-hint{text-align:center;padding:20px 10px;color:var(--muted);font-size:12px;line-height:1.7}
+.empty-hint .big{font-size:28px;margin-bottom:8px}
+#statusbar{position:absolute;bottom:24px;left:50%;transform:translateX(-50%);background:var(--panel);border:1px solid var(--border);border-radius:20px;padding:8px 18px;font-size:12px;color:var(--muted);font-family:var(--font-mono);z-index:999;pointer-events:none;white-space:nowrap}
+#statusbar.ae{color:var(--emitter);border-color:var(--emitter)}
+#statusbar.ar{color:var(--receptor);border-color:var(--receptor)}
+.ref-dist-row{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.ref-dist-label{font-size:11px;color:var(--muted)}
+.ref-dist-input{width:64px;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-family:var(--font-mono);font-size:12px;padding:4px 8px;text-align:right;-moz-appearance:textfield}
+.ref-dist-input::-webkit-outer-spin-button,.ref-dist-input::-webkit-inner-spin-button{-webkit-appearance:none}
+.ref-dist-input:focus{outline:none;border-color:var(--accent)}
+/* Leaflet popup */
+.leaflet-popup-content-wrapper{background:var(--panel);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font);box-shadow:0 8px 32px rgba(0,0,0,.6)}
+.leaflet-popup-tip{background:var(--panel)}
+.leaflet-popup-content{margin:10px 14px;font-size:13px}
+/* Custom map controls */
+.map-ctrl-btn{width:30px;height:30px;display:flex!important;align-items:center;justify-content:center;font-size:15px;cursor:pointer;background:#1a1e28!important;color:#94a3b8!important;border:none!important;border-bottom:1px solid #252a38!important;transition:all .15s!important;padding:0!important}
+.map-ctrl-btn:last-child{border-bottom:none!important;border-radius:0 0 4px 4px!important}
+.map-ctrl-btn:first-child{border-radius:4px 4px 0 0!important}
+.map-ctrl-btn:hover{background:#252a38!important;color:#e2e8f0!important}
+.map-ctrl-btn.active{background:#00e5a0!important;color:#0d0f14!important}
+.leaflet-bar{border:1px solid #252a38!important;box-shadow:0 2px 12px rgba(0,0,0,.5)!important}
+/* Legend */
+#iso-legend{position:absolute;bottom:56px;right:10px;z-index:900;background:rgba(19,22,29,.92);border:1px solid #252a38;border-radius:8px;padding:10px 12px;font-family:'Space Mono',monospace;font-size:10px;pointer-events:none;display:none}
+#iso-legend.visible{display:block}
+.leg-row{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+.leg-row:last-child{margin-bottom:0}
+.leg-swatch{width:14px;height:14px;border-radius:3px;flex-shrink:0}
+.leg-label{color:#94a3b8}
+</style>
+</head>
+<body>
+<div id="app">
+<div id="sidebar">
+  <div id="header">
+    <div class="logo">Acu<span>Map</span></div>
+    <div class="subtitle">Calculadora de Ruido Ambiental</div>
+  </div>
+  <div id="tools">
+    <button class="tool-btn" id="btn-emitter" onclick="setMode('emitter')"><span class="icon">📡</span>Emisor</button>
+    <button class="tool-btn" id="btn-receptor" onclick="setMode('receptor')"><span class="icon">🎯</span>Receptor</button>
+    <button class="tool-btn" id="btn-delete" onclick="setMode('delete')"><span class="icon">🗑️</span>Borrar</button>
+    <button class="tool-btn" onclick="clearAll()" style="flex:.7"><span class="icon">✕</span>Reset</button>
+  </div>
+  <div id="scroll-area">
+    <div>
+      <div class="section-label" style="margin-bottom:8px">Parámetros</div>
+      <div class="ref-dist-row">
+        <span class="ref-dist-label">Distancia de referencia (d₀):</span>
+        <input class="ref-dist-input" type="number" id="refDist" value="1" min="0.1" step="0.5" onchange="calculate()">
+        <span style="font-size:11px;color:var(--muted)">m</span>
+      </div>
+      <div style="font-size:10px;color:var(--muted);line-height:1.5">El nivel introducido en cada emisor corresponde a la medición a esta distancia del foco.</div>
+    </div>
+    <div>
+      <div class="section-label" style="margin-bottom:8px">Focos emisores</div>
+      <div id="emitters-list"><div class="empty-hint"><div class="big">📡</div>Selecciona <b>Emisor</b> y haz clic en el mapa</div></div>
+    </div>
+    <div>
+      <div class="section-label" style="margin-bottom:8px">Punto receptor</div>
+      <div id="receptor-container"><div class="empty-hint"><div class="big">🎯</div>Selecciona <b>Receptor</b> y haz clic en el mapa</div></div>
+    </div>
+  </div>
+  <div id="result-panel">
+    <div class="result-label">Nivel de ruido en receptor</div>
+    <div class="result-value" id="result-value" style="color:var(--muted)">— <span class="result-unit">dB(A)</span></div>
+    <div class="result-bar-bg"><div class="result-bar" id="result-bar"></div></div>
+    <div class="result-desc"><span id="result-desc">Sin datos suficientes</span><span id="result-badge"></span></div>
+    <div class="formula-row" id="formula-box">L(d) = Lref − 20·log₁₀(d/d₀)
+Ltotal = 10·log₁₀( Σ 10^(Lᵢ/10) )</div>
+  </div>
+</div>
+<div id="map">
+  <div id="statusbar">Selecciona una herramienta para comenzar</div>
+  <!-- Isophone legend -->
+  <div id="iso-legend">
+    <div class="leg-row"><div class="leg-swatch" style="background:rgba(239,83,80,.7)"></div><span class="leg-label">&gt; 75 dB(A)</span></div>
+    <div class="leg-row"><div class="leg-swatch" style="background:rgba(255,138,101,.65)"></div><span class="leg-label">70 – 75 dB(A)</span></div>
+    <div class="leg-row"><div class="leg-swatch" style="background:rgba(255,183,77,.6)"></div><span class="leg-label">65 – 70 dB(A)</span></div>
+    <div class="leg-row"><div class="leg-swatch" style="background:rgba(255,241,118,.55)"></div><span class="leg-label">55 – 65 dB(A)</span></div>
+    <div class="leg-row"><div class="leg-swatch" style="background:rgba(129,199,132,.5)"></div><span class="leg-label">45 – 55 dB(A)</span></div>
+    <div class="leg-row"><div class="leg-swatch" style="background:rgba(100,181,246,.45)"></div><span class="leg-label">&lt; 45 dB(A)</span></div>
+  </div>
+</div>
+</div>
+
+<script>
+var mode=null,emitters=[],receptor=null,emitterMarkers=[],receptorMarker=null,lineLayer,emitterCount=0;
+var pnoaVisible=true,isoVisible=false,isoLayer=null,pnoaLayer=null;
+
+// ============ MAP INIT ============
+var map=L.map('map',{center:[43.535,-5.66],zoom:13,zoomControl:false});
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{attribution:'© OpenStreetMap © CARTO',maxZoom:20}).addTo(map);
+pnoaLayer=L.tileLayer.wms('https://www.ign.es/wms-inspire/pnoa-ma',{
+  layers:'OI.OrthoimageCoverage',format:'image/jpeg',transparent:false,
+  version:'1.3.0',attribution:'© IGN España — PNOA',maxZoom:20
+}).addTo(map);
+lineLayer=L.layerGroup().addTo(map);
+
+// ============ CUSTOM CONTROLS ============
+L.Control.Zoom.include({options:{position:'topright'}});
+var zoomCtrl=L.control.zoom({position:'topright'}).addTo(map);
+
+var PnoaCtrl=L.Control.extend({
+  options:{position:'topright'},
+  onAdd:function(){
+    var btn=L.DomUtil.create('a','map-ctrl-btn active');
+    btn.innerHTML='🛰'; btn.title='Ortofoto PNOA (IGN)'; btn.href='#';
+    btn.id='pnoa-btn';
+    L.DomEvent.on(btn,'click',function(e){L.DomEvent.preventDefault(e);L.DomEvent.stopPropagation(e);togglePNOA();});
+    return btn;
+  }
+});
+var IsoCtrl=L.Control.extend({
+  options:{position:'topright'},
+  onAdd:function(){
+    var btn=L.DomUtil.create('a','map-ctrl-btn');
+    btn.innerHTML='〰'; btn.title='Mapa de isofonas'; btn.href='#';
+    btn.id='iso-btn';
+    L.DomEvent.on(btn,'click',function(e){L.DomEvent.preventDefault(e);L.DomEvent.stopPropagation(e);toggleIso();});
+    return btn;
+  }
+});
+
+// Wrap controls in a single .leaflet-bar so they share a container
+var MapControls=L.Control.extend({
+  options:{position:'topright'},
+  onAdd:function(){
+    var container=L.DomUtil.create('div','leaflet-bar');
+    var pBtn=L.DomUtil.create('a','map-ctrl-btn active',container);
+    pBtn.innerHTML='🛰'; pBtn.title='Ortofoto PNOA (IGN)'; pBtn.href='#'; pBtn.id='pnoa-btn';
+    L.DomEvent.on(pBtn,'click',function(e){L.DomEvent.preventDefault(e);L.DomEvent.stopPropagation(e);togglePNOA();});
+    var iBtn=L.DomUtil.create('a','map-ctrl-btn',container);
+    iBtn.innerHTML='〰'; iBtn.title='Mapa de isofonas'; iBtn.href='#'; iBtn.id='iso-btn';
+    L.DomEvent.on(iBtn,'click',function(e){L.DomEvent.preventDefault(e);L.DomEvent.stopPropagation(e);toggleIso();});
+    return container;
+  }
+});
+new MapControls().addTo(map);
+
+// ============ TOGGLE FUNCTIONS ============
+function togglePNOA(){
+  var btn=document.getElementById('pnoa-btn');
+  if(pnoaVisible){map.removeLayer(pnoaLayer);btn.classList.remove('active');pnoaVisible=false;}
+  else{map.addLayer(pnoaLayer);btn.classList.add('active');pnoaVisible=true;}
+}
+function toggleIso(){
+  var btn=document.getElementById('iso-btn');
+  isoVisible=!isoVisible;
+  if(isoVisible){btn.classList.add('active');document.getElementById('iso-legend').classList.add('visible');}
+  else{btn.classList.remove('active');document.getElementById('iso-legend').classList.remove('visible');}
+  drawIsophones();
+}
+
+// ============ ISOPHONE LAYER ============
+var IsoCanvasLayer=L.Layer.extend({
+  onAdd:function(m){
+    this._map=m;
+    this._canvas=document.createElement('canvas');
+    this._canvas.style.cssText='position:absolute;top:0;left:0;pointer-events:none;z-index:400';
+    m.getPanes().overlayPane.appendChild(this._canvas);
+    m.on('moveend zoomend resize',this._draw,this);
+    this._draw();
+  },
+  onRemove:function(m){
+    m.off('moveend zoomend resize',this._draw,this);
+    if(this._canvas.parentNode)this._canvas.parentNode.removeChild(this._canvas);
+  },
+  redraw:function(){this._draw();},
+  _draw:function(){
+    var m=this._map, size=m.getSize(), canvas=this._canvas;
+    canvas.width=size.x; canvas.height=size.y;
+    var tl=m.containerPointToLayerPoint([0,0]);
+    L.DomUtil.setPosition(canvas,tl);
+    var ctx=canvas.getContext('2d');
+    ctx.clearRect(0,0,size.x,size.y);
+    if(!isoVisible||emitters.length===0)return;
+
+    var step=4;
+    var cols=Math.ceil(size.x/step)+1, rows=Math.ceil(size.y/step)+1;
+    var grid=new Float32Array(cols*rows);
+    var d0=parseFloat(document.getElementById('refDist').value)||1;
+
+    // Compute noise grid
+    for(var r=0;r<rows;r++){
+      for(var c=0;c<cols;c++){
+        var px=c*step, py=r*step;
+        var ll=m.containerPointToLatLng(L.point(px,py));
+        var sp=0;
+        for(var i=0;i<emitters.length;i++){
+          var em=emitters[i];
+          var d=haversine(em.lat,em.lng,ll.lat,ll.lng);
+          if(d<0.5)d=0.5;
+          var L2=em.db-20*Math.log10(d/d0);
+          sp+=Math.pow(10,L2/10);
+        }
+        grid[r*cols+c]=10*Math.log10(sp);
+      }
+    }
+
+    // Color zones (fill rectangles)
+    var zones=[
+      {min:75,r:239,g:83,b:80,a:160},
+      {min:70,r:255,g:138,b:101,a:140},
+      {min:65,r:255,g:183,b:77,a:130},
+      {min:55,r:255,g:241,b:118,a:115},
+      {min:45,r:129,g:199,b:132,a:100},
+      {min:-9999,r:100,g:181,b:246,a:80}
+    ];
+
+    var imgData=ctx.createImageData(size.x,size.y);
+    var data=imgData.data;
+    for(var r=0;r<rows;r++){
+      for(var c=0;c<cols;c++){
+        var val=grid[r*cols+c];
+        var z; for(z=0;z<zones.length;z++){if(val>=zones[z].min)break;}
+        var zn=zones[z];
+        for(var dr=0;dr<step;dr++){
+          var py2=r*step+dr; if(py2>=size.y)break;
+          for(var dc=0;dc<step;dc++){
+            var px2=c*step+dc; if(px2>=size.x)break;
+            var idx=(py2*size.x+px2)*4;
+            data[idx]=zn.r; data[idx+1]=zn.g; data[idx+2]=zn.b; data[idx+3]=zn.a;
+          }
+        }
+      }
+    }
+    ctx.putImageData(imgData,0,0);
+
+    // Contour lines using Marching Squares
+    // corners: v00=TL, v10=TR, v11=BR, v01=BL  => sq = v00*8+v10*4+v11*2+v01
+    // midpoints: T=top, R=right, B=bottom, L=left
+    // Lookup table: lines to draw as pairs of midpoint indices [T=0,R=1,B=2,L=3]
+    var lookup=[
+      [],          // 0
+      [[3,2]],     // 1  BL → L-B
+      [[2,1]],     // 2  BR → B-R
+      [[3,1]],     // 3  BL+BR → L-R
+      [[0,1]],     // 4  TR → T-R
+      [[0,1],[3,2]], // 5 saddle TR+BL
+      [[0,2]],     // 6  TR+BR → T-B
+      [[0,3]],     // 7  → T-L
+      [[0,3]],     // 8  TL → T-L
+      [[0,2]],     // 9  TL+BL → T-B
+      [[0,3],[1,2]], // 10 saddle TL+BR
+      [[0,1]],     // 11 → T-R
+      [[3,1]],     // 12 TL+TR → L-R
+      [[2,1]],     // 13 → B-R
+      [[3,2]],     // 14 → L-B
+      []           // 15
+    ];
+
+    var thresholds=[45,55,65,70,75];
+    var tColors=['#81c784','#fff176','#ffb74d','#ff8a65','#ef5350'];
+    ctx.save();
+    ctx.lineWidth=1.5;
+
+    for(var ti=0;ti<thresholds.length;ti++){
+      var thresh=thresholds[ti];
+      ctx.strokeStyle=tColors[ti];
+      ctx.beginPath();
+      for(var r=0;r<rows-1;r++){
+        for(var c=0;c<cols-1;c++){
+          var v00=grid[r*cols+c]>=thresh?1:0;
+          var v10=grid[r*cols+(c+1)]>=thresh?1:0;
+          var v11=grid[(r+1)*cols+(c+1)]>=thresh?1:0;
+          var v01=grid[(r+1)*cols+c]>=thresh?1:0;
+          var sq=v00*8+v10*4+v11*2+v01;
+          var segs=lookup[sq];
+          if(!segs||segs.length===0)continue;
+          // midpoint coords: T,R,B,L
+          var x0=c*step, y0=r*step, hs=step/2;
+          var mp=[[x0+hs,y0],[x0+step,y0+hs],[x0+hs,y0+step],[x0,y0+hs]];
+          for(var s=0;s<segs.length;s++){
+            ctx.moveTo(mp[segs[s][0]][0],mp[segs[s][0]][1]);
+            ctx.lineTo(mp[segs[s][1]][0],mp[segs[s][1]][1]);
+          }
+        }
+      }
+      ctx.stroke();
+    }
+
+    // Labels on contour lines (sample at right edge)
+    ctx.font='bold 10px monospace';
+    ctx.textAlign='left';
+    for(var ti=0;ti<thresholds.length;ti++){
+      var thresh=thresholds[ti];
+      ctx.fillStyle=tColors[ti];
+      ctx.strokeStyle='rgba(13,15,20,.8)'; ctx.lineWidth=3;
+      // Find first row where contour passes through roughly the center column
+      var midC=Math.floor(cols/2);
+      for(var r=1;r<rows-1;r++){
+        var above=grid[r*cols+midC]>=thresh;
+        var below=grid[(r+1)*cols+midC]>=thresh;
+        if(above!==below){
+          var lx=midC*step+step/2+4;
+          var ly=r*step+step;
+          ctx.strokeText(thresh+' dB',lx,ly);
+          ctx.fillText(thresh+' dB',lx,ly);
+          break;
+        }
+      }
+    }
+    ctx.restore();
+  }
+});
+
+isoLayer=new IsoCanvasLayer();
+isoLayer.addTo(map);
+
+function drawIsophones(){
+  if(isoLayer)isoLayer.redraw();
+}
+
+// ============ ICONS ============
+function emitterIcon(n){
+  return L.divIcon({className:'',html:'<div style="width:32px;height:32px;background:rgba(255,107,53,.18);border:2px solid #ff6b35;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:monospace;font-size:12px;font-weight:700;color:#ff6b35;box-shadow:0 0 12px rgba(255,107,53,.5);cursor:pointer">'+n+'</div>',iconSize:[32,32],iconAnchor:[16,16]});
+}
+var rIcon=L.divIcon({className:'',html:'<div style="width:28px;height:28px;background:rgba(0,229,160,.18);border:2px solid #00e5a0;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;box-shadow:0 0 14px rgba(0,229,160,.6)">🎯</div>',iconSize:[28,28],iconAnchor:[14,14]});
+
+// ============ MAP CLICK ============
+map.on('click',function(e){
+  if(!mode)return;
+  var lat=e.latlng.lat,lng=e.latlng.lng;
+  if(mode==='emitter'){
+    emitterCount++;
+    var em={id:Date.now(),lat:lat,lng:lng,db:70,n:emitterCount};
+    emitters.push(em);
+    var m=L.marker([lat,lng],{icon:emitterIcon(em.n)}).addTo(map);
+    m.emId=em.id;
+    m.on('click',function(){if(mode==='delete')removeEmitter(this.emId);});
+    emitterMarkers.push({id:em.id,marker:m});
+    renderSidebar();calculate();
+  } else if(mode==='receptor'){
+    if(receptorMarker)map.removeLayer(receptorMarker);
+    receptor={lat:lat,lng:lng};
+    receptorMarker=L.marker([lat,lng],{icon:rIcon}).addTo(map);
+    receptorMarker.on('click',function(){if(mode==='delete'){map.removeLayer(receptorMarker);receptor=null;receptorMarker=null;renderSidebar();calculate();}});
+    renderSidebar();calculate();
+  }
+});
+
+function removeEmitter(id){
+  var i=emitters.findIndex(function(e){return e.id===id;});
+  if(i===-1)return;
+  emitters.splice(i,1);
+  var j=emitterMarkers.findIndex(function(m){return m.id===id;});
+  if(j!==-1){map.removeLayer(emitterMarkers[j].marker);emitterMarkers.splice(j,1);}
+  renderSidebar();calculate();
+}
+
+function clearAll(){
+  emitters=[];receptor=null;emitterCount=0;
+  emitterMarkers.forEach(function(m){map.removeLayer(m.marker);});emitterMarkers=[];
+  if(receptorMarker)map.removeLayer(receptorMarker);receptorMarker=null;
+  lineLayer.clearLayers();renderSidebar();calculate();
+}
+
+function setMode(m){
+  mode=(mode===m)?null:m;
+  document.getElementById('btn-emitter').className='tool-btn'+(mode==='emitter'?' ae':'');
+  document.getElementById('btn-receptor').className='tool-btn'+(mode==='receptor'?' ar':'');
+  document.getElementById('btn-delete').className='tool-btn'+(mode==='delete'?' ad':'');
+  var sb=document.getElementById('statusbar');
+  if(mode==='emitter'){sb.textContent='📡 Clic en el mapa para añadir un foco emisor';sb.className='ae';}
+  else if(mode==='receptor'){sb.textContent='🎯 Clic en el mapa para situar el receptor';sb.className='ar';}
+  else if(mode==='delete'){sb.textContent='🗑️ Clic en un punto para eliminarlo';sb.className='';}
+  else{sb.textContent='Selecciona una herramienta para comenzar';sb.className='';}
+}
+
+// ============ ACOUSTICS ============
+function haversine(lat1,lon1,lat2,lon2){
+  var R=6371000,dLat=(lat2-lat1)*Math.PI/180,dLon=(lon2-lon1)*Math.PI/180;
+  var a=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)*Math.sin(dLon/2);
+  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+function levelAt(Lref,d){
+  var d0=parseFloat(document.getElementById('refDist').value)||1;
+  if(d<=0)return Lref;
+  return Lref-20*Math.log10(d/d0);
+}
+
+// ============ RENDER SIDEBAR ============
+function renderSidebar(){
+  var el=document.getElementById('emitters-list');
+  var rc=document.getElementById('receptor-container');
+  if(emitters.length===0){
+    el.innerHTML='<div class="empty-hint"><div class="big">📡</div>Selecciona <b>Emisor</b> y haz clic en el mapa</div>';
+  } else {
+    el.innerHTML='';
+    emitters.forEach(function(em){
+      var dist=receptor?haversine(em.lat,em.lng,receptor.lat,receptor.lng):null;
+      var contrib=(receptor&&dist>0)?levelAt(em.db,dist):null;
+      var d=document.createElement('div');
+      d.className='emitter-card';
+      d.innerHTML='<div class="emitter-card-header"><div class="emitter-dot"></div>'
+        +'<div class="emitter-name">Emisor '+em.n+'</div>'
+        +'<button class="emitter-del" onclick="removeEmitter('+em.id+')">×</button></div>'
+        +'<div class="emitter-coords">'+em.lat.toFixed(5)+', '+em.lng.toFixed(5)+'</div>'
+        +'<div class="db-row"><span class="db-label">Nivel ref. (d₀):</span>'
+        +'<input class="db-input" type="number" value="'+em.db+'" min="0" max="200" step="0.5" onchange="updateDb('+em.id+',this.value)">'
+        +'<span class="db-unit">dB(A)</span></div>'
+        +(dist!==null?'<div class="emitter-dist"><span>d = '+(dist<1000?dist.toFixed(1)+' m':(dist/1000).toFixed(2)+' km')+'</span>'
+        +'<span class="emitter-contribution">'+(contrib!==null?contrib.toFixed(1)+' dB(A)':'—')+'</span></div>':'');
+      el.appendChild(d);
+    });
+  }
+  if(!receptor){
+    rc.innerHTML='<div class="empty-hint"><div class="big">🎯</div>Selecciona <b>Receptor</b> y haz clic en el mapa</div>';
+  } else {
+    rc.innerHTML='<div class="receptor-card"><div class="receptor-header"><div class="receptor-dot"></div>'
+      +'<div class="receptor-name">Punto receptor</div>'
+      +'<button class="receptor-del" onclick="deleteReceptor()">×</button></div>'
+      +'<div class="receptor-coords">'+receptor.lat.toFixed(5)+', '+receptor.lng.toFixed(5)+'</div></div>';
+  }
+}
+function deleteReceptor(){
+  if(receptorMarker)map.removeLayer(receptorMarker);
+  receptor=null;receptorMarker=null;lineLayer.clearLayers();renderSidebar();calculate();
+}
+function updateDb(id,val){
+  var em=emitters.find(function(e){return e.id===id;});
+  if(em){em.db=parseFloat(val)||0;calculate();renderSidebar();}
+}
+
+// ============ CALCULATE ============
+function calculate(){
+  lineLayer.clearLayers();
+  drawIsophones();
+  var rv=document.getElementById('result-value');
+  var rb=document.getElementById('result-bar');
+  var rd=document.getElementById('result-desc');
+  var rbg=document.getElementById('result-badge');
+  var fb=document.getElementById('formula-box');
+  if(!receptor||emitters.length===0){
+    rv.innerHTML='— <span class="result-unit">dB(A)</span>';rv.style.color='var(--muted)';
+    rb.style.width='0%';rd.textContent='Sin datos suficientes';rbg.innerHTML='';
+    fb.textContent='L(d) = Lref − 20·log₁₀(d/d₀)\nLtotal = 10·log₁₀( Σ 10^(Lᵢ/10) )';
+    renderSidebar();return;
+  }
+  var d0=parseFloat(document.getElementById('refDist').value)||1;
+  var sumPow=0,lines=[];
+  emitters.forEach(function(em){
+    var d=haversine(em.lat,em.lng,receptor.lat,receptor.lng);
+    var L=levelAt(em.db,d);
+    sumPow+=Math.pow(10,L/10);
+    var ds=d<1000?d.toFixed(0)+'m':(d/1000).toFixed(2)+'km';
+    lines.push('E'+em.n+': '+em.db+' − 20·log₁₀('+ds+'/'+d0+'m) = '+L.toFixed(1)+' dB(A)');
+    var alpha=Math.max(0.1,Math.min(0.7,1-d/3000));
+    L.polyline([[em.lat,em.lng],[receptor.lat,receptor.lng]],{color:'rgba(255,107,53,'+alpha+')',weight:1.5,dashArray:'4 6'}).addTo(lineLayer);
+  });
+  var Lt=10*Math.log10(sumPow);
+  var color,desc,badge;
+  if(Lt<45){color='#64b5f6';desc='Muy bajo — ambiente tranquilo';badge=['TRANQUILO','#64b5f6'];}
+  else if(Lt<55){color='#81c784';desc='Bajo — confortable';badge=['BAJO','#81c784'];}
+  else if(Lt<65){color='#fff176';desc='Moderado — perceptible';badge=['MODERADO','#fff176'];}
+  else if(Lt<70){color='#ffb74d';desc='Alto — molesto';badge=['ALTO','#ffb74d'];}
+  else if(Lt<75){color='#ff8a65';desc='Muy alto — perjudicial';badge=['MUY ALTO','#ff8a65'];}
+  else{color='#ef5350';desc='Excesivo — potencialmente dañino';badge=['EXCESIVO','#ef5350'];}
+  rv.innerHTML=Lt.toFixed(1)+' <span class="result-unit">dB(A)</span>';
+  rv.style.color=color;
+  rb.style.width=Math.min(100,(Lt/100)*100)+'%';rb.style.background=color;
+  rd.textContent=desc;
+  rbg.innerHTML='<span class="result-badge" style="background:'+badge[1]+'22;color:'+badge[1]+';border:1px solid '+badge[1]+'44">'+badge[0]+'</span>';
+  if(emitters.length>1)lines.push('Σ combinado = '+Lt.toFixed(1)+' dB(A)');
+  fb.textContent=lines.join('\n');
+  renderSidebar();
+}
+
+// Redraw isophones also on map move
+map.on('moveend zoomend',function(){if(isoVisible)drawIsophones();});
+
+renderSidebar();
+</script>
+</body>
+</html>
