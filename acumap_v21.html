@@ -1,0 +1,1296 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AcuMap — Calculadora de Ruido</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/geotiff@2.1.3/dist-browser/geotiff.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.2/sql-wasm.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0d0f14;--panel:#13161d;--panel2:#1a1e28;--border:#252a38;--accent:#4a90ff;--warn:#ffc547;--text:#ffffff;--muted:#c8d0dc;--emitter:#ff6b35;--receptor:#4a90ff;--font-mono:'Space Mono',monospace;--font:'DM Sans',sans-serif}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:var(--font)}
+#app{display:flex;height:100vh}
+#sidebar{width:390px;min-width:390px;background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column;z-index:1000;overflow:hidden}
+#header{padding:20px 20px 16px;border-bottom:1px solid var(--border);background:var(--bg)}
+#header .logo{font-family:var(--font-mono);font-size:18px;font-weight:700;color:var(--accent);letter-spacing:-.5px}
+#header .logo span{color:var(--muted)}
+#header .subtitle{font-size:11px;color:var(--text);font-weight:600;margin-top:3px;letter-spacing:1px;text-transform:uppercase}
+#tools{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;gap:8px}
+.tool-btn{flex:1;padding:9px 8px;border-radius:8px;border:1px solid var(--border);background:var(--panel2);color:var(--muted);font-family:var(--font);font-size:12px;font-weight:500;cursor:pointer;transition:all .15s;display:flex;flex-direction:column;align-items:center;gap:5px}
+.tool-btn .icon{font-size:18px}
+.tool-btn:hover{border-color:var(--accent);color:var(--text)}
+.tool-btn.ae{background:rgba(255,107,53,.12);border-color:var(--emitter);color:var(--emitter)}
+.tool-btn.ar{background:rgba(74,144,255,.15);border-color:var(--receptor);color:var(--receptor)}
+.tool-btn.ad{background:rgba(239,68,68,.12);border-color:#ef4444;color:#ef4444}
+#scroll-area{flex:1;overflow-y:auto;padding:14px 16px;display:flex;flex-direction:column;gap:14px}
+#scroll-area::-webkit-scrollbar{width:4px}
+#scroll-area::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+.section-label{font-family:var(--font-mono);font-size:10px;color:var(--text);font-weight:700;text-transform:uppercase;letter-spacing:1.5px;display:flex;align-items:center;gap:6px;margin-bottom:8px}
+.section-label::after{content:'';flex:1;height:1px;background:var(--border)}
+.emitter-card{background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:12px;transition:border-color .15s;animation:fadeIn .2s ease}
+.emitter-card:hover{border-color:rgba(255,107,53,.4)}
+@keyframes fadeIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
+.emitter-card-header{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.emitter-dot{width:10px;height:10px;border-radius:50%;background:var(--emitter);box-shadow:0 0 6px var(--emitter);flex-shrink:0}
+.emitter-name{font-family:var(--font-mono);font-size:12px;color:var(--text);font-weight:700;flex:1}
+.emitter-del{background:none;border:none;color:var(--muted);cursor:pointer;font-size:18px;line-height:1;padding:2px;transition:color .15s}
+.emitter-del:hover{color:#ef4444}
+.emitter-coords{font-size:10px;color:var(--muted);font-family:var(--font-mono);margin-bottom:10px}
+.db-row{display:flex;align-items:center;gap:8px}
+.db-label{font-size:11px;color:var(--muted);white-space:nowrap}
+.db-input{flex:1;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--emitter);font-family:var(--font-mono);font-size:14px;font-weight:700;padding:6px 10px;text-align:right;width:80px;transition:border-color .15s;-moz-appearance:textfield}
+.db-input::-webkit-outer-spin-button,.db-input::-webkit-inner-spin-button{-webkit-appearance:none}
+.db-input:focus{outline:none;border-color:var(--emitter)}
+.db-unit{font-family:var(--font-mono);font-size:12px;color:var(--muted)}
+.emitter-dist{margin-top:8px;font-size:11px;color:var(--muted);display:flex;justify-content:space-between;align-items:center;padding-top:8px;border-top:1px solid var(--border)}
+.emitter-contribution{font-family:var(--font-mono);font-size:13px;color:var(--warn);font-weight:700}
+.receptor-card{background:rgba(74,144,255,.05);border:1px solid rgba(74,144,255,.3);border-radius:10px;padding:12px;animation:fadeIn .2s ease}
+.receptor-header{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.receptor-dot{width:10px;height:10px;border-radius:50%;background:var(--receptor);box-shadow:0 0 6px var(--receptor)}
+.receptor-name{font-family:var(--font-mono);font-size:12px;color:var(--receptor);font-weight:700;flex:1}
+.receptor-del{background:none;border:none;color:var(--muted);cursor:pointer;font-size:18px;padding:2px;transition:color .15s}
+.receptor-del:hover{color:#ef4444}
+.receptor-coords{font-size:10px;color:var(--muted);font-family:var(--font-mono)}
+#result-panel{
+  position:absolute;
+  bottom:14px;
+  right:10px;
+  z-index:900;
+  background:rgba(13,15,20,.93);
+  border:1px solid var(--border);
+  border-radius:12px;
+  box-shadow:0 4px 24px rgba(0,0,0,.6);
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+  backdrop-filter:blur(8px);
+  width:240px;
+  pointer-events:auto;
+}
+#result-panel-inner{
+  padding:12px 14px 8px;
+}
+#formula-panel{
+  padding:0 14px 10px;
+}
+.result-label{font-family:var(--font-mono);font-size:9px;color:var(--text);font-weight:700;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:6px}
+.result-value{font-family:var(--font-mono);font-size:32px;font-weight:700;line-height:1;transition:color .3s}
+.result-unit{font-size:13px;font-weight:600;color:var(--muted)}
+.result-bar-bg{margin-top:8px;height:4px;background:var(--panel2);border-radius:3px;overflow:hidden}
+.result-bar{height:100%;border-radius:3px;transition:width .4s cubic-bezier(.4,0,.2,1),background .3s;width:0%}
+.result-desc{margin-top:6px;font-size:10px;color:var(--text);font-weight:600;display:flex;justify-content:space-between;align-items:center;padding-bottom:8px;border-bottom:1px solid var(--border)}
+.result-badge{display:inline-block;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;font-family:var(--font-mono)}
+.formula-row{margin-top:0;padding:5px 7px;background:var(--panel2);border-radius:6px;font-family:var(--font-mono);font-size:9px;color:var(--muted);line-height:1.6;white-space:pre-wrap;word-break:break-all}
+#map{flex:1;position:relative}
+.empty-hint{text-align:center;padding:20px 10px;color:var(--muted);font-size:12px;line-height:1.7}
+.empty-hint .big{font-size:28px;margin-bottom:8px}
+#statusbar{padding:8px 16px;font-size:11px;color:var(--muted);font-family:var(--font-mono);border-bottom:1px solid var(--border);background:var(--bg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#statusbar.ae{color:var(--emitter)}
+#statusbar.ar{color:var(--receptor)}
+.ref-dist-row{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.ref-dist-label{font-size:11px;color:var(--muted)}
+.ref-dist-input{width:64px;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-weight:700;font-family:var(--font-mono);font-size:12px;padding:4px 8px;text-align:right;-moz-appearance:textfield}
+.ref-dist-input::-webkit-outer-spin-button,.ref-dist-input::-webkit-inner-spin-button{-webkit-appearance:none}
+.ref-dist-input:focus{outline:none;border-color:var(--accent)}
+.h-row{display:flex;align-items:center;gap:6px;margin-top:4px}
+.h-label{font-size:11px;color:var(--muted);flex:1}
+.h-input{width:52px;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-weight:700;font-family:var(--font-mono);font-size:12px;padding:4px 8px;text-align:right;-moz-appearance:textfield}
+.h-input::-webkit-outer-spin-button,.h-input::-webkit-inner-spin-button{-webkit-appearance:none}
+.h-input:focus{outline:none;border-color:var(--accent)}
+
+/* Geocoder */
+#geocoder-wrap{position:absolute;top:10px;left:10px;z-index:1001;width:280px}
+#geocoder-input{width:100%;padding:9px 12px;border-radius:8px;border:1px solid #252a38;background:rgba(19,22,29,.95);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;outline:none;box-shadow:0 2px 12px rgba(0,0,0,.5)}
+#geocoder-input::placeholder{color:var(--muted)}
+#geocoder-input:focus{border-color:#4a90ff}
+#geocoder-results{background:rgba(19,22,29,.97);border:1px solid #252a38;border-top:none;border-radius:0 0 8px 8px;overflow:hidden;display:none}
+#geocoder-results.open{display:block}
+.gc-item{padding:8px 12px;font-size:12px;color:var(--text);cursor:pointer;border-bottom:1px solid #252a38;transition:background .1s;line-height:1.4}
+.gc-item:last-child{border-bottom:none}
+.gc-item:hover{background:#1a1e28;color:var(--text);font-weight:600}
+.gc-item b{color:#4a90ff}
+
+/* Leaflet popup */
+.leaflet-popup-content-wrapper{background:var(--panel);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font);box-shadow:0 8px 32px rgba(0,0,0,.6)}
+.leaflet-popup-tip{background:var(--panel)}
+.leaflet-popup-content{margin:10px 14px;font-size:13px}
+/* Map control buttons */
+.map-ctrl-btn{width:34px;height:34px;display:flex!important;align-items:center;justify-content:center;cursor:pointer;background:#1a1e28!important;color:var(--muted)!important;border:none!important;border-bottom:1px solid #1e2330!important;transition:all .15s!important;padding:0!important;text-decoration:none!important}
+.map-ctrl-btn svg{width:17px;height:17px;pointer-events:none}
+.map-ctrl-btn:last-child{border-bottom:none!important;border-radius:0 0 6px 6px!important}
+.map-ctrl-btn:first-child{border-radius:6px 6px 0 0!important}
+.map-ctrl-btn:hover{background:#252a38!important;color:var(--text)!important}
+.map-ctrl-btn.active{background:#4a90ff!important;color:#fff!important}
+.map-ctrl-btn.loading{background:#ffc547!important;color:#0d0f14!important}
+.leaflet-bar{border:1px solid #252a38!important;box-shadow:0 2px 12px rgba(0,0,0,.5)!important}
+/* Isophone legend — bottom-left */
+#iso-legend{position:absolute;bottom:14px;left:10px;z-index:900;background:rgba(19,22,29,.92);border:1px solid #252a38;border-radius:8px;padding:10px 12px;font-family:'Space Mono',monospace;font-size:10px;pointer-events:none;display:none}
+#iso-legend.visible{display:block}
+.leg-title{color:var(--text);font-size:9px;font-weight:700;margin-bottom:6px;letter-spacing:.8px;text-transform:uppercase}
+.leg-row{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+.leg-row:last-child{margin-bottom:0}
+.leg-swatch{width:14px;height:14px;border-radius:3px;flex-shrink:0}
+.leg-label{color:var(--text);font-weight:600}
+/* Info toasts — bottom-center del mapa */
+#map-toasts{position:absolute;bottom:54px;left:50%;transform:translateX(-50%);z-index:900;display:flex;flex-direction:column;align-items:center;gap:5px;pointer-events:none;white-space:nowrap}
+.map-badge{background:rgba(13,15,20,.92);border:1px solid #252a38;border-radius:6px;padding:5px 12px;font-family:'Space Mono',monospace;font-size:10px;color:var(--muted);display:none;animation:fadeIn .2s ease}
+.map-badge.visible{display:block}
+
+/* Help modal */
+#help-overlay{display:none;position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.65);backdrop-filter:blur(4px);align-items:center;justify-content:center}
+#help-overlay.open{display:flex}
+#help-modal{background:#13161d;border:1px solid #252a38;border-radius:14px;width:min(680px,94vw);max-height:85vh;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,.7)}
+#help-header{padding:18px 22px 14px;border-bottom:1px solid #252a38;display:flex;align-items:center;gap:10px}
+#help-header .htitle{font-family:'Space Mono',monospace;font-size:15px;font-weight:700;color:#4a90ff;flex:1}
+#help-header .hclose{background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;line-height:1;padding:2px 6px;border-radius:4px;transition:color .15s}
+#help-header .hclose:hover{color:var(--text)}
+#help-body{overflow-y:auto;padding:18px 22px 22px;display:flex;flex-direction:column;gap:20px;font-size:13px;line-height:1.65;color:var(--text)}
+#help-body::-webkit-scrollbar{width:4px}
+#help-body::-webkit-scrollbar-thumb{background:#252a38;border-radius:4px}
+.h-section{}
+.h-section h3{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:#4a90ff;margin-bottom:10px}
+.h-table{width:100%;border-collapse:collapse}
+.h-table td{padding:5px 8px;border-bottom:1px solid #1a1e28;vertical-align:top}
+.h-table td:first-child{width:38px;text-align:center;font-size:16px}
+.h-table td:nth-child(2){width:110px;font-family:'Space Mono',monospace;font-size:10px;color:#4a90ff;white-space:nowrap;font-weight:700}
+.h-table td:last-child{color:var(--muted);font-size:12px}
+.h-formula{background:#0d0f14;border:1px solid #252a38;border-radius:6px;padding:10px 12px;font-family:'Space Mono',monospace;font-size:11px;color:var(--text);line-height:1.8}
+.h-note{font-size:11px;color:var(--muted);border-left:2px solid #252a38;padding-left:10px;margin-top:6px}
+
+/* GPKG field dialog */
+#gpkg-dialog{display:none;position:fixed;inset:0;z-index:2100;background:rgba(0,0,0,.7);backdrop-filter:blur(4px);align-items:center;justify-content:center}
+#gpkg-dialog.open{display:flex}
+#gpkg-box{background:#13161d;border:1px solid #252a38;border-radius:12px;width:min(380px,92vw);padding:22px;box-shadow:0 16px 48px rgba(0,0,0,.6)}
+#gpkg-box h4{font-family:'Space Mono',monospace;font-size:12px;color:#4a90ff;margin-bottom:6px;font-weight:700}
+#gpkg-box p{font-size:12px;color:var(--muted);margin-bottom:14px}
+#gpkg-field-select{width:100%;background:#0d0f14;border:1px solid #252a38;border-radius:6px;color:var(--text);font-family:'Space Mono',monospace;font-size:12px;padding:7px 10px;outline:none;appearance:none;cursor:pointer}
+#gpkg-field-select:focus{border-color:#4a90ff}
+.gpkg-btns{display:flex;gap:8px;margin-top:16px;justify-content:flex-end}
+.gpkg-btn{padding:7px 18px;border-radius:6px;border:1px solid #252a38;font-family:'Space Mono',monospace;font-size:11px;cursor:pointer;transition:all .15s}
+.gpkg-btn.cancel{background:transparent;color:var(--muted)}.gpkg-btn.cancel:hover{color:var(--text)}
+.gpkg-btn.ok{background:#4a90ff;border-color:#4a90ff;color:#0d0f14;font-weight:700}.gpkg-btn.ok:hover{background:#6aaeff}
+
+</style>
+</head>
+<body>
+<!-- Input oculto para carga de edificios GPKG -->
+<input type="file" id="bld-file-input" accept=".gpkg,.GPKG" style="display:none" onchange="onBldFileSelected(this)">
+
+<!-- Help modal -->
+<div id="help-overlay" onclick="if(event.target===this)closeHelp()">
+ <div id="help-modal">
+  <div id="help-header">
+   <span class="htitle">AcuMap — Guía de uso</span>
+   <button class="hclose" onclick="closeHelp()">✕</button>
+  </div>
+  <div id="help-body">
+   <div class="h-section">
+    <h3>Herramientas del panel lateral</h3>
+    <table class="h-table">
+     <tr><td>📡</td><td>Emisor</td><td>Activa el modo de colocación de focos emisores. Cada clic en el mapa añade un emisor con nivel configurable (dB(A) a la distancia de referencia d₀).</td></tr>
+     <tr><td>🎯</td><td>Receptor</td><td>Coloca el punto receptor. Solo puede haber uno. El cálculo se actualiza en tiempo real al moverlo.</td></tr>
+     <tr><td>🗑️</td><td>Borrar</td><td>Elimina el punto (emisor o receptor) sobre el que se hace clic.</td></tr>
+     <tr><td>✕</td><td>Reset</td><td>Elimina todos los puntos y limpia el mapa.</td></tr>
+    </table>
+   </div>
+   <div class="h-section">
+    <h3>Capas del mapa (barra derecha)</h3>
+    <table class="h-table">
+     <tr><td style="font-size:14px;opacity:.8">◎</td><td>PNOA</td><td>Activa/desactiva la ortofoto del Plan Nacional de Ortofotografía Aérea (IGN). Resolución 25–50 cm.</td></tr>
+     <tr><td style="font-size:14px;opacity:.8">▲</td><td>IGN Base</td><td>Cartografía base vectorial del IGN, útil como fondo entre mapa oscuro y ortofoto.</td></tr>
+     <tr><td>〰</td><td>Isofonas</td><td>Activa el mapa de curvas isofonas calculadas para todos los emisores. Se recalcula en tiempo real.</td></tr>
+     <tr><td>🏔</td><td>MDT05</td><td>Descarga el Modelo Digital del Terreno LiDAR 5m del IGN para la extensión visible. Permite calcular apantallamiento por relieve.</td></tr>
+     <tr><td>🏢</td><td>Cargar GPKG</td><td>Carga una capa de plantas de edificios en formato GeoPackage (.gpkg). Soporta geometrías 2D y 3D, proyecciones UTM zona 29/30/31 y WGS84.</td></tr>
+     <tr><td>◧</td><td>Edificios</td><td>Activa/desactiva el efecto de apantallamiento acústico de los edificios cargados, sin necesidad de recargar el fichero.</td></tr>
+     <tr><td>?</td><td>Ayuda</td><td>Abre esta guía.</td></tr>
+    </table>
+   </div>
+   <div class="h-section">
+    <h3>Parámetros acústicos</h3>
+    <table class="h-table">
+     <tr><td>d₀</td><td>Dist. referencia</td><td>Distancia a la que se especifica el nivel del emisor (por defecto 1 m). Corresponde a la distancia de medición del nivel de potencia aparente.</td></tr>
+     <tr><td>hs</td><td>Altura fuente</td><td>Altura del foco emisor sobre el nivel del suelo (o sobre la cota del MDT si está activo).</td></tr>
+     <tr><td>hr</td><td>Altura receptor</td><td>Altura del punto receptor sobre el nivel del suelo.</td></tr>
+    </table>
+   </div>
+   <div class="h-section">
+    <h3>Metodología de cálculo</h3>
+    <div class="h-formula">L(d) = L<sub>ref</sub> − A<sub>div</sub> − A<sub>atm</sub> − A<sub>dif</sub>
+
+A<sub>div</sub> = 20·log₁₀(d / d₀)                 [divergencia geométrica]
+A<sub>atm</sub> ≈ 1.5 dB/km                          [absorción atmosférica, ISO 9613-1 @ 500 Hz]
+A<sub>dif</sub> = 10·log₁₀(3 + 20·N)  N=2δ/λ        [difracción Maekawa, ISO 9613-2]
+
+L<sub>total</sub> = 10·log₁₀( Σ 10^(Lᵢ/10) )        [suma energética de N emisores]</div>
+    <div class="h-note">La difracción se aplica cuando la línea de visión emisor–receptor es interceptada por un obstáculo (cresta de terreno MDT05 o arista de edificio del GPKG). Se usa el método de borde único con el obstáculo de mayor exceso de altura sobre la LOS. Umbral mínimo: exceso &gt; 0.3 m. Atenuación máxima por difracción: 20 dB.</div>
+   </div>
+   <div class="h-section">
+    <h3>Sobre el modelo</h3>
+    <div class="h-note">AcuMap es una herramienta de estimación rápida basada en el modelo ISO 9613-2 (borde simple). No sustituye a software de modelización acústica homologado (SoundPLAN, CadnaA, NoiseModelling) para estudios de impacto acústico oficiales. No considera reflexiones, suelo blando ni difracción múltiple. Adecuado para evaluaciones preliminares y análisis de sensibilidad en EIA.</div>
+   </div>
+  </div>
+ </div>
+</div>
+
+<!-- GPKG field selector dialog -->
+<div id="gpkg-dialog">
+ <div id="gpkg-box">
+  <h4>Campo de altura</h4>
+  <p>Selecciona la columna que se usará como altura de edificio (m):</p>
+  <select id="gpkg-field-select"></select>
+  <div class="gpkg-btns">
+   <button class="gpkg-btn cancel" onclick="gpkgDialogCancel()">Cancelar</button>
+   <button class="gpkg-btn ok" onclick="gpkgDialogOk()">Aceptar</button>
+  </div>
+ </div>
+</div>
+
+<div id="app">
+<div id="sidebar">
+  <div id="header">
+    <div class="logo">Acu<span>Map</span></div>
+    <div class="subtitle">Calculadora de Ruido Ambiental</div>
+    <div style="font-size:9px;color:var(--muted);font-weight:600;margin-top:5px;letter-spacing:.3px;font-family:var(--font)">Un proyecto de Jose Francisco Sánchez Díaz</div>
+  </div>
+  <div id="tools">
+    <button class="tool-btn" id="btn-emitter" onclick="setMode('emitter')"><span class="icon">📡</span>Emisor</button>
+    <button class="tool-btn" id="btn-receptor" onclick="setMode('receptor')"><span class="icon">🎯</span>Receptor</button>
+    <button class="tool-btn" id="btn-delete" onclick="setMode('delete')"><span class="icon">🗑️</span>Borrar</button>
+    <button class="tool-btn" onclick="clearAll()" style="flex:.7"><span class="icon">✕</span>Reset</button>
+  </div>
+  <div id="statusbar">Selecciona una herramienta para comenzar</div>
+  <div id="scroll-area">
+    <div>
+      <div class="section-label">Parámetros</div>
+      <div class="ref-dist-row">
+        <span class="ref-dist-label">Distancia de referencia (d₀):</span>
+        <input class="ref-dist-input" type="number" id="refDist" value="1" min="0.1" step="0.5" onchange="calculate()">
+        <span style="font-size:11px;color:var(--muted);font-weight:600">m</span>
+      </div>
+      <div class="h-row">
+        <span class="h-label">Altura fuente emisora (hs):</span>
+        <input class="h-input" type="number" id="srcH" value="5" min="0" step="0.5" onchange="calculate()">
+        <span style="font-size:11px;color:var(--muted);font-weight:600">m</span>
+      </div>
+      <div class="h-row">
+        <span class="h-label">Altura receptor (hr):</span>
+        <input class="h-input" type="number" id="recH" value="4" min="0" step="0.5" onchange="calculate()">
+        <span style="font-size:11px;color:var(--muted);font-weight:600">m</span>
+      </div>
+      <div style="font-size:10px;color:var(--muted);font-weight:600;line-height:1.5;margin-top:6px">hs y hr se suman a la elevación del terreno cuando el MDT05 está activo.</div>
+    </div>
+    <div>
+      <div class="section-label">Focos emisores</div>
+      <div id="emitters-list"><div class="empty-hint"><div class="big">📡</div>Selecciona <b>Emisor</b> y haz clic en el mapa</div></div>
+    </div>
+    <div>
+      <div class="section-label">Punto receptor</div>
+      <div id="receptor-container"><div class="empty-hint"><div class="big">🎯</div>Selecciona <b>Receptor</b> y haz clic en el mapa</div></div>
+    </div>
+  </div><!-- /scroll-area -->
+  <div style="padding:10px 16px;border-top:1px solid var(--border);font-size:9px;line-height:1.6;color:var(--muted);font-family:var(--font)">
+    <span style="display:block;font-weight:700;color:var(--text)">Jose Francisco Sánchez Díaz</span>
+    Biólogo · Servicio de Evaluaciones Ambientales<br>Principado de Asturias
+  </div>
+</div><!-- /sidebar -->
+
+<div id="map">
+  <!-- Geocoder search -->
+  <div id="geocoder-wrap">
+    <input id="geocoder-input" type="text" placeholder="🔍 Buscar topónimo o dirección…" autocomplete="off"
+      oninput="geocoderInput(this.value)" onkeydown="if(event.key==='Escape'){closeGeocoder();}">
+    <div id="geocoder-results"></div>
+  </div>
+  <!-- Floating result panel -->
+  <div id="result-panel">
+    <div id="result-panel-inner">
+      <div class="result-label">Nivel en receptor</div>
+      <div class="result-value" id="result-value" style="color:var(--muted)">— <span class="result-unit">dB(A)</span></div>
+      <div class="result-bar-bg"><div class="result-bar" id="result-bar"></div></div>
+      <div class="result-desc"><span id="result-desc">Sin datos suficientes</span><span id="result-badge"></span></div>
+    </div>
+    <div id="formula-panel">
+      <div class="formula-row" id="formula-box">L(d) = Lref − 20·log₁₀(d/d₀) − ΔLMaekawa
+Ltotal = 10·log₁₀( Σ 10^(Lᵢ/10) )</div>
+    </div>
+  </div>
+  <div id="iso-legend">
+    <div class="leg-title">Isofonas dB(A)</div>
+    <div class="leg-row"><div class="leg-swatch" style="background:rgba(239,83,80,.7)"></div><span class="leg-label">&gt; 75</span></div>
+    <div class="leg-row"><div class="leg-swatch" style="background:rgba(255,138,101,.65)"></div><span class="leg-label">70 – 75</span></div>
+    <div class="leg-row"><div class="leg-swatch" style="background:rgba(255,183,77,.6)"></div><span class="leg-label">65 – 70</span></div>
+    <div class="leg-row"><div class="leg-swatch" style="background:rgba(255,241,118,.55)"></div><span class="leg-label">55 – 65</span></div>
+    <div class="leg-row"><div class="leg-swatch" style="background:rgba(129,199,132,.5)"></div><span class="leg-label">45 – 55</span></div>
+    <div class="leg-row"><div class="leg-swatch" style="background:rgba(100,181,246,.45)"></div><span class="leg-label">&lt; 45</span></div>
+  </div>
+  <!-- Toasts centrados en el borde inferior del mapa -->
+  <div id="map-toasts">
+    <div id="barriers-panel" style="display:none;background:rgba(13,15,20,.92);border:1px solid #252a38;border-radius:8px;overflow:hidden;min-width:200px">
+      <div style="padding:5px 12px 3px;font-family:'Space Mono',monospace;font-size:9px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#4a90ff;border-bottom:1px solid #1a1e28">Barreras sonoras analizadas</div>
+      <div class="map-badge barrier-row" id="dem-badge" style="display:none;border-radius:0;border:none;border-bottom:1px solid #1a1e28"></div>
+      <div class="map-badge barrier-row" id="bld-badge" style="display:none;border-radius:0;border:none"></div>
+    </div>
+  </div>
+</div>
+</div>
+
+<script>
+// ===================== STATE =====================
+var mode=null, emitters=[], receptor=null;
+var emitterMarkers=[], receptorMarker=null, lineLayer;
+var emitterCount=0;
+var pnoaVisible=true, isoVisible=false, demVisible=false, ignBaseVisible=false;
+var ignBaseLayer=null;
+var buildings=[], buildingLayer=null, buildingsLoaded=false, buildingsActive=true;
+var pnoaLayer=null, isoLayer=null;
+var mds=null; // reservado para uso futuro
+var dem=null; // MDT05 {data,width,height,west,east,south,north}
+var demFetchTimer=null;
+var REF_LAT=43.535, REF_LNG=-5.66;
+
+// ===================== MAP INIT =====================
+var map=L.map('map',{center:[REF_LAT,REF_LNG],zoom:15,zoomControl:false});
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{attribution:'© OpenStreetMap © CARTO',maxZoom:20}).addTo(map);
+// Pane intermedio para la capa IGN Base (entre mapa oscuro y PNOA)
+map.createPane('ignPane');
+map.getPane('ignPane').style.zIndex=250;
+map.getPane('ignPane').style.pointerEvents='none';
+ignBaseLayer=L.tileLayer('https://www.ign.es/wmts/ign-base?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=IGNBaseTodo&STYLE=default&TILEMATRIXSET=GoogleMapsCompatible&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=image/jpeg',
+  {attribution:'© IGN España',maxZoom:20,pane:'ignPane'});
+// (no se añade al mapa por defecto — se activa con el botón)
+pnoaLayer=L.tileLayer.wms('https://www.ign.es/wms-inspire/pnoa-ma',{
+  layers:'OI.OrthoimageCoverage',format:'image/jpeg',transparent:false,
+  version:'1.3.0',attribution:'© IGN España — PNOA',maxZoom:20
+}).addTo(map);
+
+lineLayer=L.layerGroup().addTo(map);
+var MapControls=L.Control.extend({
+  options:{position:'topright'},
+  onAdd:function(){
+    var c=L.DomUtil.create('div','leaflet-bar');
+    function mkBtn(id,icon,title,fn,active){
+      var b=L.DomUtil.create('a','map-ctrl-btn',c);
+      b.innerHTML=icon; b.title=title; b.href='#'; b.id=id;
+      if(active)b.classList.add('active');
+      L.DomEvent.on(b,'click',function(e){L.DomEvent.preventDefault(e);L.DomEvent.stopPropagation(e);fn();});
+      return b;
+    }
+    var I={
+      pnoa:'<svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="9" r="3.5"/><path d="M9 1v2M9 15v2M1 9h2M15 9h2"/><path d="M3.3 3.3l1.4 1.4M13.3 13.3l1.4 1.4M13.3 3.3l-1.4 1.4M3.3 13.3l1.4 1.4"/><path d="M9 5.5 L11 3 L15 4 L16 8 L13.5 9" stroke-width="1" opacity=".7"/><path d="M5.5 9 L3 11 L4 15 L8 16 L9 13.5" stroke-width="1" opacity=".7"/></svg>',
+      ign: '<svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" xmlns="http://www.w3.org/2000/svg"><path d="M2 14 L6 4 L10 10 L13 6 L16 14 Z"/><path d="M2 14h14"/><path d="M6 8 Q8 7 10 10" stroke-width="1" opacity=".5"/><circle cx="13" cy="6" r="1" fill="currentColor" stroke="none" opacity=".6"/></svg>',
+      lbl: '<svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" xmlns="http://www.w3.org/2000/svg"><path d="M3 5h12M3 9h8M3 13h10"/><circle cx="14.5" cy="13" r="2" fill="currentColor" stroke="none" opacity=".4"/></svg>',
+      iso: '<svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" xmlns="http://www.w3.org/2000/svg"><path d="M2 13 C4 9, 7 6, 9 9 S14 14, 16 10"/><path d="M2 9 C5 4, 8 3, 11 6 S15 11, 16 7" opacity=".5"/></svg>',
+      dem: '<svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" xmlns="http://www.w3.org/2000/svg"><path d="M1 14 L5 7 L9 10 L13 4 L17 14 Z"/></svg>',
+      bld: '<svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="7" width="9" height="9" rx="1"/><path d="M7 7V4h7v12"/><path d="M10 10h2M10 13h2"/><path d="M4 10h3M4 13h3"/></svg>',
+      btog:'<svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="5" width="9" height="11" rx="1"/><path d="M7 5V3h7v13"/><path d="M13 7v2M13 11v2"/><circle cx="14.5" cy="4" r="2.5" fill="currentColor" stroke="none" opacity=".5"/><path d="M13.5 4h2M14.5 3v2" stroke="currentColor" stroke-width="1.2"/></svg>',
+      help:'<svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="9" r="7.5"/><path d="M7 7a2 2 0 1 1 2 2v1.5"/><circle cx="9" cy="13" r=".8" fill="currentColor" stroke="none"/></svg>'
+    };
+    mkBtn('pnoa-btn',I.pnoa,'Ortofoto PNOA (IGN)',togglePNOA,true);
+    mkBtn('ign-btn',I.ign,'IGN Base (cartografía base IGN)',toggleIgnBase,false);
+    mkBtn('iso-btn',I.iso,'Mapa de isofonas',toggleIso,false);
+    mkBtn('dem-btn',I.dem,'MDT05 IGN — relieve LiDAR 5 m',toggleDEM,false);
+    mkBtn('bld-btn',I.bld,'Cargar edificios (.gpkg)',function(){document.getElementById('bld-file-input').click();},false);
+    mkBtn('bld-toggle-btn',I.btog,'Activar/desactivar apantallamiento edificios',toggleBuildings,false);
+    mkBtn('help-btn',I.help,'Ayuda / instrucciones de uso',openHelp,false);
+    return c;
+  }
+});
+L.control.zoom({position:'topright'}).addTo(map);
+new MapControls().addTo(map);
+
+// ===================== TOGGLE FUNCTIONS =====================
+function togglePNOA(){
+  pnoaVisible=!pnoaVisible;
+  pnoaVisible?map.addLayer(pnoaLayer):map.removeLayer(pnoaLayer);
+  document.getElementById('pnoa-btn').classList.toggle('active',pnoaVisible);
+}
+function toggleBuildings(){
+  if(!buildingsLoaded){alert('Primero carga un fichero .gpkg con el botón 🏢');return;}
+  buildingsActive=!buildingsActive;
+  document.getElementById('bld-toggle-btn').classList.toggle('active',buildingsActive);
+  // Mostrar/ocultar capa visual
+  if(buildingLayer){
+    buildingsActive?map.addLayer(buildingLayer):map.removeLayer(buildingLayer);
+  }
+  calculate(); drawIsophones();
+}
+
+
+function openHelp(){document.getElementById('help-overlay').classList.add('open');}
+function closeHelp(){document.getElementById('help-overlay').classList.remove('open');}
+
+function toggleIgnBase(){
+  ignBaseVisible=!ignBaseVisible;
+  ignBaseVisible?map.addLayer(ignBaseLayer):map.removeLayer(ignBaseLayer);
+  document.getElementById('ign-btn').classList.toggle('active',ignBaseVisible);
+}
+
+function toggleIso(){
+  isoVisible=!isoVisible;
+  document.getElementById('iso-btn').classList.toggle('active',isoVisible);
+  document.getElementById('iso-legend').classList.toggle('visible',isoVisible);
+  drawIsophones();
+}
+function toggleDEM(){
+  demVisible=!demVisible;
+  if(!demVisible){
+    dem=null;
+    document.getElementById('dem-btn').classList.remove('active');
+    hideBadge('dem-badge');
+    calculate(); drawIsophones();
+  } else {
+    fetchDEM();
+  }
+}
+
+// ===================== GEOMETRY HELPERS =====================
+function toM(lat,lng){
+  return toMRef(lat,lng,REF_LAT,REF_LNG);
+}
+function toMRef(lat,lng,refLat,refLng){
+  return {x:(lng-refLng)*Math.cos(refLat*Math.PI/180)*111320, y:(lat-refLat)*111320};
+}
+function segIntersect(ax,ay,bx,by,cx,cy,dx,dy){
+  var d1x=bx-ax,d1y=by-ay,d2x=dx-cx,d2y=dy-cy;
+  var cross=d1x*d2y-d1y*d2x;
+  if(Math.abs(cross)<1e-8)return null;
+  var t=((cx-ax)*d2y-(cy-ay)*d2x)/cross;
+  var u=((cx-ax)*d1y-(cy-ay)*d1x)/cross;
+  if(t>1e-4&&t<1-1e-4&&u>1e-4&&u<1-1e-4)return{x:ax+t*d1x,y:ay+t*d1y,t:t};
+  return null;
+}
+
+
+
+// ===================== DEM / TERRAIN =====================
+function getElevation(lat,lng){
+  if(!dem)return 0;
+  var tx=(lng-dem.west)/(dem.east-dem.west);
+  var ty=(dem.north-lat)/(dem.north-dem.south);
+  if(tx<0||tx>1||ty<0||ty>1)return 0;
+  var px=tx*(dem.width-1), py=ty*(dem.height-1);
+  var x0=Math.floor(px), y0=Math.floor(py);
+  var x1=Math.min(x0+1,dem.width-1), y1=Math.min(y0+1,dem.height-1);
+  var fx=px-x0, fy=py-y0;
+  var g=dem.data;
+  var v=function(r,c){var v2=g[r*dem.width+c];return(v2==null||v2<-1000)?0:v2;};
+  return v(y0,x0)*(1-fx)*(1-fy)+v(y0,x1)*fx*(1-fy)+v(y1,x0)*(1-fx)*fy+v(y1,x1)*fx*fy;
+}
+
+// ── Maekawa (ISO 9613-2 edge diffraction) ────────────────────────────────────
+// Todos los argumentos en metros (sistema local plano).
+// Devuelve atenuación en dB, acotada a [0, 20] dB (un solo borde).
+function maekawa(sx,sy,sz,rx,ry,rz,bx,by,bz){
+  var lambda=0.68; // c/f = 340/500 Hz
+  var A=Math.sqrt((bx-sx)*(bx-sx)+(by-sy)*(by-sy)+(bz-sz)*(bz-sz));
+  var B=Math.sqrt((rx-bx)*(rx-bx)+(ry-by)*(ry-by)+(rz-bz)*(rz-bz));
+  var d=Math.sqrt((rx-sx)*(rx-sx)+(ry-sy)*(ry-sy)+(rz-sz)*(rz-sz));
+  var delta=A+B-d;
+  var N=2*delta/lambda;
+  var arg=3+20*N;
+  if(arg<=0)return 0;
+  return Math.min(20, Math.max(0, 10*Math.log10(arg)));
+}
+
+// ── Perfil del terreno entre emisor y receptor (MDT05, EPSG:4258 ≡ Leaflet lat/lng) ──
+// NPTS = 150 → resolución ~6–7 m a 1 km; umbral 0.3 m filtra ruido de interpolación
+function terrainProfile(srcLat,srcLng,srcAbsH,recLat,recLng,recAbsH){
+  var NPTS=150;
+  var pts=[];
+  for(var i=1;i<NPTS-1;i++){
+    var t=i/(NPTS-1);
+    var lat=srcLat+t*(recLat-srcLat);
+    var lng=srcLng+t*(recLng-srcLng);
+    var terrH=getElevation(lat,lng);
+    var losH=srcAbsH+t*(recAbsH-srcAbsH);
+    pts.push({t:t,lat:lat,lng:lng,terrH:terrH,losH:losH,excess:terrH-losH});
+  }
+  return pts;
+}
+
+// ── Cresta dominante del perfil ────────────────────────────────────────────
+function dominantCrest(profile){
+  var THRESHOLD=0.3;
+  var best=null;
+  for(var i=0;i<profile.length;i++){
+    if(!best||profile[i].excess>best.excess) best=profile[i];
+  }
+  return (best&&best.excess>THRESHOLD)?best:null;
+}
+
+function findMaxObstruction(srcLat,srcLng,srcAbsH,recLat,recLng,recAbsH){
+  var best=null;
+  // 1) Terreno (MDT05)
+  if(demVisible&&dem){
+    var profile=terrainProfile(srcLat,srcLng,srcAbsH,recLat,recLng,recAbsH);
+    var crest=dominantCrest(profile);
+    if(crest) best={excess:crest.excess,t:crest.t,lat:crest.lat,lng:crest.lng,
+                    absH:crest.terrH,type:'terrain'};
+  }
+  // 2) Edificios cargados (independiente del MDT)
+  if(buildingsLoaded&&buildingsActive){
+    var bldObs=findBuildingObstruction(srcLat,srcLng,srcAbsH,recLat,recLng,recAbsH);
+    if(bldObs&&(!best||bldObs.excess>best.excess))best=bldObs;
+  }
+  return best;
+}
+
+// ── Nivel sonoro completo de un emisor a un punto (devuelve objeto con detalle)
+// Propagación = divergencia geométrica + absorción atmosférica + difracción Maekawa
+function levelFromDetail(em,toLat,toLng){
+  var d0=parseFloat(document.getElementById('refDist').value)||1;
+  var sh=parseFloat(document.getElementById('srcH').value)||5;
+  var rh=parseFloat(document.getElementById('recH').value)||4;
+
+  var d=haversine(em.lat,em.lng,toLat,toLng);
+  if(d<0.5)d=0.5;
+
+  var Adiv=20*Math.log10(d/d0);
+  var Aatm=0.0015*d; // ISO 9613-1 @ 500 Hz, 15°C, 70% HR ≈ 1.5 dB/km
+
+  var result={L:em.db-Adiv-Aatm, Adiv:Adiv, Aatm:Aatm, Adif:0, obs:null};
+
+  // Calcular alturas absolutas de fuente y receptor:
+  // Con MDT activo: cota terreno + altura paramétrica
+  // Sin MDT (solo edificios): se usan directamente las alturas paramétricas
+  var needsObstruction=(demVisible&&dem)||(buildingsLoaded&&buildingsActive);
+  if(needsObstruction){
+    var srcTerrH=(demVisible&&dem)?getElevation(em.lat,em.lng):0;
+    var recTerrH=(demVisible&&dem)?getElevation(toLat,toLng):0;
+    var srcAbsH=srcTerrH+sh;
+    var recAbsH=recTerrH+rh;
+
+    var obs=findMaxObstruction(em.lat,em.lng,srcAbsH,toLat,toLng,recAbsH);
+    if(obs&&obs.excess>0){
+      var mLat=(em.lat+toLat)/2, mLng=(em.lng+toLng)/2;
+      var sm=toMRef(em.lat,em.lng,mLat,mLng);
+      var rm=toMRef(toLat,toLng,mLat,mLng);
+      var bm=toMRef(obs.lat,obs.lng,mLat,mLng);
+      var Adif=maekawa(sm.x,sm.y,srcAbsH, rm.x,rm.y,recAbsH, bm.x,bm.y,obs.absH);
+      result.Adif=Adif;
+      result.obs=obs;
+      result.L=em.db-Adiv-Aatm-Adif;
+    }
+  }
+  return result;
+}
+
+// Versión simplificada para el mapa de isofonas (devuelve solo el nivel)
+function levelFrom(em,toLat,toLng){
+  return levelFromDetail(em,toLat,toLng).L;
+}
+
+function showBadge(id,text){
+  var el=document.getElementById(id);
+  if(!el)return;
+  el.textContent=text; el.style.display='block';
+  updateBarriersPanel();
+}
+function hideBadge(id){
+  var el=document.getElementById(id);
+  if(!el)return;
+  el.style.display='none';
+  updateBarriersPanel();
+}
+function updateBarriersPanel(){
+  var demVis=document.getElementById('dem-badge').style.display!=='none';
+  var bldVis=document.getElementById('bld-badge').style.display!=='none';
+  document.getElementById('barriers-panel').style.display=(demVis||bldVis)?'block':'none';
+}
+
+// ===================== BUILDINGS — GPKG LOADER =====================
+// Inicializar sql.js con su WASM desde cdnjs
+var SQL=null;
+initSqlJs({
+  locateFile:function(f){return 'https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.2/'+f;}
+}).then(function(s){SQL=s;}).catch(function(e){console.warn('sql.js no cargó:',e);});
+
+// Estado compartido para el diálogo GPKG
+var _gpkgPending=null; // {db, tableName, geomCol, srsId, colsRes, numericColNames}
+
+function onBldFileSelected(input){
+  var file=input.files&&input.files[0];
+  if(!file)return;
+  if(!SQL){alert('sql.js todavía no ha terminado de cargar. Espera un momento y vuelve a intentarlo.');return;}
+  var btn=document.getElementById('bld-btn');
+  btn.innerHTML='<svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="9" cy="9" r="7"/><path d="M9 6v3l2 2"/></svg>';
+  btn.classList.add('loading');
+  var reader=new FileReader();
+  reader.onload=function(e){
+    try{prepareGPKG(new Uint8Array(e.target.result));}
+    catch(err){
+      btn.classList.remove('loading','active');
+      btn.innerHTML=_bldIcon();
+      alert('Error al leer el GPKG:\n'+err.message);
+    }
+  };
+  reader.onerror=function(){btn.classList.remove('loading','active');btn.innerHTML=_bldIcon();alert('No se pudo leer el fichero.');};
+  reader.readAsArrayBuffer(file);
+  input.value='';
+}
+
+function _bldIcon(){
+  return '<svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="7" width="9" height="9" rx="1"/><path d="M7 7V4h7v12"/><path d="M10 10h2M10 13h2"/><path d="M4 10h3M4 13h3"/></svg>';
+}
+
+function prepareGPKG(bytes){
+  var db=new SQL.Database(bytes);
+  var gcRes=db.exec("SELECT table_name,column_name,srs_id FROM gpkg_geometry_columns");
+  if(!gcRes.length||!gcRes[0].values.length)throw new Error('No se encontraron capas de geometría en el fichero GPKG.');
+  var tableName=gcRes[0].values[0][0];
+  var geomCol  =gcRes[0].values[0][1];
+  var srsId    =gcRes[0].values[0][2];
+
+  var colsRes=db.exec("PRAGMA table_info('"+tableName+"')");
+  // Todos los campos numéricos y de texto (cualquiera puede contener alturas)
+  var allCols=colsRes[0].values
+    .filter(function(r){
+      var n=r[1].toLowerCase();
+      return n!==geomCol.toLowerCase()&&n!=='fid'&&n!=='ogc_fid';
+    })
+    .map(function(r){return r[1];});
+
+  if(!allCols.length)throw new Error('No se encontraron columnas de atributos en "'+tableName+'".');
+
+  // Guardar estado y abrir diálogo
+  _gpkgPending={db:db,tableName:tableName,geomCol:geomCol,srsId:srsId};
+
+  var sel=document.getElementById('gpkg-field-select');
+  sel.innerHTML='';
+  allCols.forEach(function(col){
+    var opt=document.createElement('option');
+    opt.value=col; opt.textContent=col;
+    if(col.toLowerCase()==='altura')opt.selected=true;
+    sel.appendChild(opt);
+  });
+  document.getElementById('gpkg-dialog').classList.add('open');
+}
+
+function gpkgDialogCancel(){
+  document.getElementById('gpkg-dialog').classList.remove('open');
+  if(_gpkgPending){_gpkgPending.db.close();_gpkgPending=null;}
+  var btn=document.getElementById('bld-btn');
+  btn.classList.remove('loading'); btn.innerHTML=_bldIcon();
+}
+
+function gpkgDialogOk(){
+  document.getElementById('gpkg-dialog').classList.remove('open');
+  var heightCol=document.getElementById('gpkg-field-select').value;
+  if(!_gpkgPending)return;
+  try{parseGPKG(_gpkgPending.db,_gpkgPending.tableName,_gpkgPending.geomCol,_gpkgPending.srsId,heightCol);}
+  catch(err){
+    var btn=document.getElementById('bld-btn');
+    btn.classList.remove('loading','active'); btn.innerHTML=_bldIcon();
+    alert('Error al procesar el GPKG:\n'+err.message);
+  }
+  _gpkgPending=null;
+}
+
+function parseGPKG(db,tableName,geomCol,srsId,heightCol){
+  var btn=document.getElementById('bld-btn');
+
+  // Leer features
+  var rows=db.exec('SELECT "'+geomCol+'","'+heightCol+'" FROM "'+tableName+'"');
+  if(!rows.length||!rows[0].values.length)throw new Error('La tabla "'+tableName+'" no contiene features.');
+
+  // Determinar zona UTM
+  var utmZone=null;
+  if(srsId===25829||srsId===32629)utmZone=29;
+  else if(srsId===25830||srsId===32630)utmZone=30;
+  else if(srsId===25831||srsId===32631)utmZone=31;
+
+  buildings=[];
+  var skipped=0;
+  rows[0].values.forEach(function(row){
+    var geomBytes=row[0];
+    var h=parseFloat(row[1])||0;
+    if(!(geomBytes instanceof Uint8Array))geomBytes=new Uint8Array(geomBytes);
+    var rings=parseGPKGGeom(geomBytes);
+    if(!rings||!rings.length){skipped++;return;}
+    rings.forEach(function(ring){
+      if(ring.length<3){skipped++;return;}
+      var converted=utmZone?ring.map(function(pt){return utmToWgs84(pt[0],pt[1],utmZone);}):ring;
+      buildings.push({poly:converted, height:Math.max(0,h)});
+    });
+  });
+
+  db.close();
+  renderBuildings();
+  calculate(); drawIsophones();
+  btn.classList.remove('loading'); btn.classList.add('active'); btn.innerHTML=_bldIcon();
+  buildingsActive=true;
+  document.getElementById('bld-toggle-btn').classList.add('active');
+  var msg='🏢 '+buildings.length+' edificios'+(skipped?' ('+skipped+' omitidos)':'')
+         +' · campo "'+heightCol+'"'+(utmZone?' · UTM Z'+utmZone:'');
+  showBadge('bld-badge',msg);
+  buildingsLoaded=true;
+}
+
+// ── Parseo GeoPackage Binary + WKB ──────────────────────────────────────────
+function parseGPKGGeom(bytes){
+  // Header GeoPackage: 'G'(0x47) 'P'(0x50) version flags srs_id[4] [envelope]
+  if(bytes[0]!==0x47||bytes[1]!==0x50)return null;
+  var flags=bytes[3];
+  var isEmpty=(flags>>4)&1;
+  if(isEmpty)return null;
+  var envInd=(flags>>1)&7;
+  var envLen=[0,32,48,48,64][envInd]||0;
+  var wkbOff=8+envLen;
+  if(wkbOff>=bytes.length)return null;
+  var view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);
+  return parseWKBGeom(view,wkbOff).rings;
+}
+
+// ── Normaliza el tipo WKB a tipo base 2D e indica si tiene Z ──────────────
+// ISO SQL/MM: 1001-1007 = Z, 2001-2007 = M, 3001-3007 = ZM
+// EWKB (PostGIS): bit 0x80000000 = Z, bit 0x40000000 = M
+function wkbNormType(raw){
+  var hasZ=false, hasM=false, base=raw;
+  if(raw>3000&&raw<=3007){base=raw-3000;hasZ=true;}
+  else if(raw>2000&&raw<=2007){base=raw-2000;}
+  else if(raw>1000&&raw<=1007){base=raw-1000;hasZ=true;}
+  else{
+    if(raw&0x80000000){hasZ=true;}
+    if(raw&0x40000000){hasM=true;}
+    base=raw&0xFF;
+  }
+  return{base:base,hasZ:hasZ,hasM:hasM,stride:8*(2+(hasZ?1:0)+(hasM?1:0))};
+}
+
+function parseWKBGeom(view,off){
+  if(off+5>view.byteLength)return{rings:[],end:off};
+  var le=(view.getUint8(off)===1); off+=1;
+  var rawType=view.getUint32(off,le); off+=4;
+  var nt=wkbNormType(rawType);
+
+  if(nt.base===3){  // Polygon (2D/Z/M/ZM)
+    return parseWKBPolygon(view,off,le,nt.stride);
+  } else if(nt.base===6){  // MultiPolygon
+    var n=view.getUint32(off,le); off+=4;
+    var allRings=[];
+    for(var i=0;i<n;i++){
+      if(off+1>view.byteLength)break;
+      var sub=parseWKBGeom(view,off);
+      allRings=allRings.concat(sub.rings);
+      off=sub.end;
+    }
+    return{rings:allRings,end:off};
+  } else if(nt.base===7){  // GeometryCollection
+    var n=view.getUint32(off,le); off+=4;
+    var allRings=[];
+    for(var i=0;i<n;i++){
+      if(off+1>view.byteLength)break;
+      var sub=parseWKBGeom(view,off);
+      allRings=allRings.concat(sub.rings);
+      off=sub.end;
+    }
+    return{rings:allRings,end:off};
+  }
+  return{rings:[],end:off};
+}
+
+function parseWKBPolygon(view,off,le,stride){
+  // stride = bytes por punto: 16 (2D), 24 (Z), 32 (ZM)
+  if(stride===undefined)stride=16;
+  var rings=[];
+  if(off+4>view.byteLength)return{rings:rings,end:off};
+  var nRings=view.getUint32(off,le); off+=4;
+  for(var r=0;r<nRings;r++){
+    if(off+4>view.byteLength)break;
+    var nPts=view.getUint32(off,le); off+=4;
+    var ring=[];
+    for(var p=0;p<nPts;p++){
+      if(off+16>view.byteLength)break;
+      var x=view.getFloat64(off,le);
+      var y=view.getFloat64(off+8,le);
+      off+=stride; // avanzar stride completo (ignora Z/M si los hay)
+      ring.push([x,y]);
+    }
+    if(r===0&&ring.length>=3)rings.push(ring); // solo anillo exterior
+  }
+  return{rings:rings,end:off};
+}
+
+// ── Conversión UTM → WGS84 (Transverse Mercator inversa) ────────────────────
+// Válido para ETRS89 y WGS84 (diferencia < 1 m en Europa)
+function utmToWgs84(easting,northing,zone){
+  var a=6378137.0,f=1/298.257223563;
+  var b=a*(1-f),e2=1-(b*b)/(a*a),ep2=e2/(1-e2),k0=0.9996;
+  var E0=500000,N0=0; // northern hemisphere
+  var lon0=(zone*6-183)*Math.PI/180;
+  var x=easting-E0, y=northing-N0;
+  var M=y/k0;
+  var mu=M/(a*(1-e2/4-3*e2*e2/64-5*e2*e2*e2/256));
+  var e1=(1-Math.sqrt(1-e2))/(1+Math.sqrt(1-e2));
+  var phi1=mu+(3*e1/2-27*e1*e1*e1/32)*Math.sin(2*mu)
+            +(21*e1*e1/16-55*e1*e1*e1*e1/32)*Math.sin(4*mu)
+            +(151*e1*e1*e1/96)*Math.sin(6*mu);
+  var sp=Math.sin(phi1),cp=Math.cos(phi1),tp=sp/cp;
+  var N1=a/Math.sqrt(1-e2*sp*sp);
+  var T1=tp*tp;
+  var C1=ep2*cp*cp;
+  var R1=a*(1-e2)/Math.pow(1-e2*sp*sp,1.5);
+  var D=x/(N1*k0);
+  var lat=phi1-(N1*tp/R1)*(D*D/2
+    -(5+3*T1+10*C1-4*C1*C1-9*ep2)*D*D*D*D/24
+    +(61+90*T1+298*C1+45*T1*T1-252*ep2-3*C1*C1)*D*D*D*D*D*D/720);
+  var lng=lon0+(D-(1+2*T1+C1)*D*D*D/6
+    +(5-2*C1+28*T1-3*C1*C1+8*ep2+24*T1*T1)*D*D*D*D*D/120)/cp;
+  // [lat, lng] en radianes → grados; [lng,lat] → [lat,lng] para Leaflet
+  return[lat*180/Math.PI, lng*180/Math.PI];
+}
+
+// ── Render plantas de edificios en el mapa ───────────────────────────────────
+function renderBuildings(){
+  if(buildingLayer){map.removeLayer(buildingLayer);}
+  buildingLayer=L.layerGroup();
+  buildings.forEach(function(bld){
+    var latLngs=bld.poly.map(function(pt){return[pt[0],pt[1]];});
+    L.polygon(latLngs,{
+      color:'#ffd166',weight:1.5,opacity:.9,
+      fillColor:'#ffd166',fillOpacity:.22,
+      interactive:true
+    }).bindTooltip('h = '+bld.height.toFixed(0)+' m',{sticky:true,className:'leaflet-popup-content-wrapper'}).addTo(buildingLayer);
+  });
+  if(buildingsActive)buildingLayer.addTo(map);
+}
+
+// ── Detección de obstrucción por edificios ────────────────────────────────────
+// Recorre todos los edificios cargados y encuentra la obstrucción máxima
+// sobre la línea de visión entre emisor y receptor.
+function findBuildingObstruction(srcLat,srcLng,srcAbsH,recLat,recLng,recAbsH){
+  if(!buildings.length)return null;
+  var best=null;
+  for(var bi=0;bi<buildings.length;bi++){
+    var bld=buildings[bi];
+    var poly=bld.poly; // [[lat,lng],...]
+    for(var pi=0;pi<poly.length-1;pi++){
+      // segIntersect trabaja en coordenadas planas — usamos lng,lat como x,y
+      var ix=segIntersect(
+        srcLng,srcLat, recLng,recLat,
+        poly[pi][1],poly[pi][0], poly[pi+1][1],poly[pi+1][0]
+      );
+      if(!ix)continue;
+      var t=ix.t;
+      var iLat=srcLat+t*(recLat-srcLat);
+      var iLng=srcLng+t*(recLng-srcLng);
+      // Cota absoluta: terreno (si MDT activo) + altura del edificio
+      var terrH=(demVisible&&dem)?getElevation(iLat,iLng):0;
+      var absTop=terrH+bld.height;
+      // Altura de la línea de visión en ese punto
+      var losH=srcAbsH+t*(recAbsH-srcAbsH);
+      var excess=absTop-losH;
+      if(!best||excess>best.excess){
+        best={excess:excess,t:t,lat:iLat,lng:iLng,
+              absH:absTop,type:'building',buildingHeight:bld.height};
+      }
+    }
+  }
+  return(best&&best.excess>0.3)?best:null;
+}
+
+
+// COVERAGEID: Elevacion4258_5 — mismo endpoint que MDT25, resolución 5 m
+// CRS: ETRS89 geográfico (EPSG:4258) ≡ WGS84 para Europa → coherente con Leaflet lat/lng
+async function fetchDEM(){
+  var btn=document.getElementById('dem-btn');
+  btn.classList.add('loading'); btn.innerHTML='⏳';
+  var b=map.getBounds().pad(0.05);
+  var w=b.getWest(),e=b.getEast(),s=b.getSouth(),n=b.getNorth();
+
+  var url='https://servicios.idee.es/wcs-inspire/mdt'
+    +'?SERVICE=WCS&VERSION=2.0.1&REQUEST=GetCoverage'
+    +'&COVERAGEID=Elevacion4258_5'
+    +'&SUBSET=Long('+w+','+e+')'
+    +'&SUBSET=Lat('+s+','+n+')'
+    +'&format=image/tiff';
+
+  try {
+    var resp=await fetch(url,{mode:'cors'});
+    if(!resp.ok)throw new Error('HTTP '+resp.status);
+    var contentType=resp.headers.get('content-type')||'';
+    if(contentType.indexOf('xml')!==-1||contentType.indexOf('html')!==-1){
+      var txt=await resp.text();
+      throw new Error('El servidor devolvió XML/HTML en lugar de GeoTIFF: '+txt.substring(0,200));
+    }
+    var buf=await resp.arrayBuffer();
+    var tiff=await GeoTIFF.fromArrayBuffer(buf);
+    var img=await tiff.getImage();
+    var rasters=await img.readRasters();
+    var raw=rasters[0];
+    var bbox=img.getBoundingBox();
+    // nodata: valores fuera del rango plausible de elevación en España → 0
+    var clean=new Float32Array(raw.length);
+    for(var i=0;i<raw.length;i++)clean[i]=(raw[i]<-100||raw[i]>9000)?0:raw[i];
+    dem={data:clean,width:img.getWidth(),height:img.getHeight(),
+         west:bbox[0],south:bbox[1],east:bbox[2],north:bbox[3]};
+    btn.classList.remove('loading'); btn.classList.add('active'); btn.innerHTML='🏔';
+    showBadge('dem-badge','🏔 MDT05 IGN · '+dem.width+'×'+dem.height+' px · 5 m (EPSG:4258)');
+    calculate(); drawIsophones();
+  } catch(err){
+    dem=null; demVisible=false;
+    btn.classList.remove('loading','active'); btn.innerHTML='🏔';
+    console.error('DEM error:',err);
+    alert('No se pudo cargar el MDT05 del IGN (WCS INSPIRE).\n\n'
+      +'Error: '+err.message+'\n\n'
+      +'Posibles causas:\n'
+      +'• El servicio WCS del IGN bloqueó la petición CORS.\n'
+      +'• Prueba desde un servidor local:\n'
+      +'  python -m http.server 8080  →  http://localhost:8080/\n'
+      +'• O usa una extensión de navegador que elimine CORS.');
+  }
+}
+
+// Reload DEM on map move when active
+map.on('moveend',function(){
+  if(demVisible&&dem){
+    // Check if map moved outside current DEM extent
+    var b=map.getBounds();
+    if(!dem||b.getWest()<dem.west||b.getEast()>dem.east||b.getSouth()<dem.south||b.getNorth()>dem.north){
+      clearTimeout(demFetchTimer);demFetchTimer=setTimeout(fetchDEM,1000);
+    }
+  }
+});
+
+// ===================== ISOPHONE CANVAS LAYER =====================
+var IsoLayer=L.Layer.extend({
+  onAdd:function(m){
+    this._map=m;
+    this._canvas=document.createElement('canvas');
+    this._canvas.style.cssText='position:absolute;top:0;left:0;pointer-events:none;z-index:400';
+    m.getPanes().overlayPane.appendChild(this._canvas);
+    m.on('moveend zoomend resize',this._draw,this);
+    this._draw();
+  },
+  onRemove:function(m){
+    m.off('moveend zoomend resize',this._draw,this);
+    if(this._canvas.parentNode)this._canvas.parentNode.removeChild(this._canvas);
+  },
+  redraw:function(){this._draw();},
+  _draw:function(){
+    var m=this._map,sz=m.getSize(),cv=this._canvas;
+    cv.width=sz.x; cv.height=sz.y;
+    var tl=m.containerPointToLayerPoint([0,0]);
+    L.DomUtil.setPosition(cv,tl);
+    var ctx=cv.getContext('2d');
+    ctx.clearRect(0,0,sz.x,sz.y);
+    if(!isoVisible||emitters.length===0)return;
+    var step=demVisible?8:(buildingsLoaded?6:4);
+    var cols=Math.ceil(sz.x/step)+1,rows=Math.ceil(sz.y/step)+1;
+    var grid=new Float32Array(cols*rows);
+    for(var r=0;r<rows;r++){
+      for(var c=0;c<cols;c++){
+        var ll=m.containerPointToLatLng(L.point(c*step,r*step));
+        var sp=0;
+        for(var i=0;i<emitters.length;i++){
+          var L2=levelFrom(emitters[i],ll.lat,ll.lng);
+          sp+=Math.pow(10,L2/10);
+        }
+        grid[r*cols+c]=10*Math.log10(sp);
+      }
+    }
+    // Zone fill
+    var zones=[
+      {min:75,r:239,g:83,b:80,a:155},{min:70,r:255,g:138,b:101,a:140},
+      {min:65,r:255,g:183,b:77,a:125},{min:55,r:255,g:241,b:118,a:110},
+      {min:45,r:129,g:199,b:132,a:95},{min:-9999,r:100,g:181,b:246,a:75}
+    ];
+    var imgData=ctx.createImageData(sz.x,sz.y);
+    var px=imgData.data;
+    for(var r=0;r<rows;r++){
+      for(var c=0;c<cols;c++){
+        var val=grid[r*cols+c];
+        var z=zones.length-1;
+        for(var zi=0;zi<zones.length;zi++){if(val>=zones[zi].min){z=zi;break;}}
+        var zn=zones[z];
+        for(var dr=0;dr<step;dr++){
+          var py2=r*step+dr; if(py2>=sz.y)break;
+          for(var dc=0;dc<step;dc++){
+            var px2=c*step+dc; if(px2>=sz.x)break;
+            var idx=(py2*sz.x+px2)*4;
+            px[idx]=zn.r;px[idx+1]=zn.g;px[idx+2]=zn.b;px[idx+3]=zn.a;
+          }
+        }
+      }
+    }
+    ctx.putImageData(imgData,0,0);
+    // Contour lines (Marching Squares)
+    var lut=[
+      [],[['L','B']],[['B','R']],[['L','R']],[['T','R']],
+      [['T','R'],['L','B']],[['T','B']],[['T','L']],[['T','L']],
+      [['T','B']],[['T','L'],['B','R']],[['T','R']],[['L','R']],
+      [['B','R']],[['L','B']],[]
+    ];
+    var thresholds=[45,55,65,70,75];
+    var tColors=['#81c784','#fff176','#ffb74d','#ff8a65','#ef5350'];
+    ctx.save(); ctx.lineWidth=1.5;
+    for(var ti=0;ti<thresholds.length;ti++){
+      var th=thresholds[ti];
+      ctx.strokeStyle=tColors[ti]; ctx.beginPath();
+      for(var r=0;r<rows-1;r++){
+        for(var c=0;c<cols-1;c++){
+          var sq=(grid[r*cols+c]>=th?8:0)+(grid[r*cols+c+1]>=th?4:0)
+               +(grid[(r+1)*cols+c+1]>=th?2:0)+(grid[(r+1)*cols+c]>=th?1:0);
+          var segs=lut[sq]; if(!segs||!segs.length)continue;
+          var hs=step/2;
+          var mp={T:[c*step+hs,r*step],R:[c*step+step,r*step+hs],B:[c*step+hs,r*step+step],L:[c*step,r*step+hs]};
+          for(var s=0;s<segs.length;s++){
+            ctx.moveTo(mp[segs[s][0]][0],mp[segs[s][0]][1]);
+            ctx.lineTo(mp[segs[s][1]][0],mp[segs[s][1]][1]);
+          }
+        }
+      }
+      ctx.stroke();
+    }
+    ctx.lineWidth=3; ctx.font='bold 10px monospace'; ctx.textAlign='left';
+    var mc=Math.floor(cols/2);
+    for(var ti=0;ti<thresholds.length;ti++){
+      var th=thresholds[ti];
+      ctx.fillStyle=tColors[ti]; ctx.strokeStyle='rgba(13,15,20,.8)';
+      for(var r=1;r<rows-1;r++){
+        if((grid[r*cols+mc]>=th)!==(grid[(r+1)*cols+mc]>=th)){
+          ctx.strokeText(th+' dB',mc*step+hs+4,r*step+step);
+          ctx.fillText(th+' dB',mc*step+hs+4,r*step+step); break;
+        }
+      }
+    }
+    ctx.restore();
+  }
+});
+isoLayer=new IsoLayer().addTo(map);
+function drawIsophones(){if(isoLayer)isoLayer.redraw();}
+
+// ===================== ICONS =====================
+function emitterIcon(n){
+  return L.divIcon({className:'',html:'<div style="width:32px;height:32px;background:rgba(255,107,53,.18);border:2px solid #ff6b35;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:monospace;font-size:12px;font-weight:700;color:#ff6b35;box-shadow:0 0 12px rgba(255,107,53,.5)">'+n+'</div>',iconSize:[32,32],iconAnchor:[16,16]});
+}
+var rIcon=L.divIcon({className:'',html:'<div style="width:28px;height:28px;background:rgba(74,144,255,.18);border:2px solid #4a90ff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;box-shadow:0 0 14px rgba(74,144,255,.6)">🎯</div>',iconSize:[28,28],iconAnchor:[14,14]});
+
+// ===================== MAP CLICK =====================
+map.on('click',function(e){
+  if(!mode)return;
+  var lat=e.latlng.lat,lng=e.latlng.lng;
+  if(mode==='emitter'){
+    emitterCount++;
+    var em={id:Date.now(),lat:lat,lng:lng,db:70,n:emitterCount};
+    emitters.push(em);
+    var mk=L.marker([lat,lng],{icon:emitterIcon(em.n)}).addTo(map);
+    mk.emId=em.id;
+    mk.on('click',function(){if(mode==='delete')removeEmitter(this.emId);});
+    emitterMarkers.push({id:em.id,marker:mk});
+    renderSidebar(); calculate();
+  } else if(mode==='receptor'){
+    if(receptorMarker)map.removeLayer(receptorMarker);
+    receptor={lat:lat,lng:lng};
+    receptorMarker=L.marker([lat,lng],{icon:rIcon}).addTo(map);
+    receptorMarker.on('click',function(){if(mode==='delete'){map.removeLayer(receptorMarker);receptor=null;receptorMarker=null;renderSidebar();calculate();}});
+    renderSidebar(); calculate();
+  }
+});
+
+function removeEmitter(id){
+  var i=emitters.findIndex(function(e){return e.id===id;});
+  if(i===-1)return;
+  emitters.splice(i,1);
+  var j=emitterMarkers.findIndex(function(m){return m.id===id;});
+  if(j!==-1){map.removeLayer(emitterMarkers[j].marker);emitterMarkers.splice(j,1);}
+  renderSidebar(); calculate();
+}
+function clearAll(){
+  emitters=[]; receptor=null; emitterCount=0;
+  emitterMarkers.forEach(function(m){map.removeLayer(m.marker);}); emitterMarkers=[];
+  if(receptorMarker)map.removeLayer(receptorMarker); receptorMarker=null;
+  lineLayer.clearLayers();
+  renderSidebar(); calculate();
+}
+function setMode(m){
+  mode=(mode===m)?null:m;
+  document.getElementById('btn-emitter').className='tool-btn'+(mode==='emitter'?' ae':'');
+  document.getElementById('btn-receptor').className='tool-btn'+(mode==='receptor'?' ar':'');
+  document.getElementById('btn-delete').className='tool-btn'+(mode==='delete'?' ad':'');
+  var sb=document.getElementById('statusbar');
+  if(mode==='emitter'){sb.textContent='📡 Clic en el mapa para añadir un foco emisor';sb.className='ae';}
+  else if(mode==='receptor'){sb.textContent='🎯 Clic en el mapa para situar el receptor';sb.className='ar';}
+  else if(mode==='delete'){sb.textContent='🗑️ Clic en un punto para eliminarlo';sb.className='';}
+  else{sb.textContent='Selecciona una herramienta para comenzar';sb.className='';}
+}
+
+// ===================== ACOUSTICS =====================
+function haversine(lat1,lon1,lat2,lon2){
+  var R=6371000,dLat=(lat2-lat1)*Math.PI/180,dLon=(lon2-lon1)*Math.PI/180;
+  var a=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)*Math.sin(dLon/2);
+  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+
+// ===================== RENDER SIDEBAR =====================
+function renderSidebar(){
+  var el=document.getElementById('emitters-list');
+  var rc=document.getElementById('receptor-container');
+  if(emitters.length===0){
+    el.innerHTML='<div class="empty-hint"><div class="big">📡</div>Selecciona <b>Emisor</b> y haz clic en el mapa</div>';
+  } else {
+    el.innerHTML='';
+    emitters.forEach(function(em){
+      var dist=receptor?haversine(em.lat,em.lng,receptor.lat,receptor.lng):null;
+      var contrib=receptor&&dist>0?levelFrom(em,receptor.lat,receptor.lng):null;
+      var srcH=demVisible?getElevation(em.lat,em.lng):0;
+      var d2=document.createElement('div');
+      d2.className='emitter-card';
+      d2.innerHTML='<div class="emitter-card-header"><div class="emitter-dot"></div>'
+        +'<div class="emitter-name">Emisor '+em.n+'</div>'
+        +'<button class="emitter-del" onclick="removeEmitter('+em.id+')">×</button></div>'
+        +'<div class="emitter-coords">'+em.lat.toFixed(5)+', '+em.lng.toFixed(5)
+        +(demVisible?' · z='+srcH.toFixed(0)+'m':'')+'</div>'
+        +'<div class="db-row"><span class="db-label">Nivel ref. (d₀):</span>'
+        +'<input class="db-input" type="number" value="'+em.db+'" min="0" max="200" step="0.5" onchange="updateDb('+em.id+',this.value)">'
+        +'<span class="db-unit">dB(A)</span></div>'
+        +(dist!==null?'<div class="emitter-dist"><span>d = '+(dist<1000?dist.toFixed(1)+' m':(dist/1000).toFixed(2)+' km')+'</span>'
+        +'<span class="emitter-contribution">'+(contrib!==null?contrib.toFixed(1)+' dB(A)':'—')+'</span></div>':'');
+      el.appendChild(d2);
+    });
+  }
+  if(!receptor){
+    rc.innerHTML='<div class="empty-hint"><div class="big">🎯</div>Selecciona <b>Receptor</b> y haz clic en el mapa</div>';
+  } else {
+    var recH=demVisible?getElevation(receptor.lat,receptor.lng):0;
+    rc.innerHTML='<div class="receptor-card"><div class="receptor-header"><div class="receptor-dot"></div>'
+      +'<div class="receptor-name">Punto receptor</div>'
+      +'<button class="receptor-del" onclick="deleteReceptor()">×</button></div>'
+      +'<div class="receptor-coords">'+receptor.lat.toFixed(5)+', '+receptor.lng.toFixed(5)
+      +(demVisible?' · z='+recH.toFixed(0)+'m':'')+'</div></div>';
+  }
+}
+function deleteReceptor(){
+  if(receptorMarker)map.removeLayer(receptorMarker);
+  receptor=null; receptorMarker=null; lineLayer.clearLayers(); renderSidebar(); calculate();
+}
+function updateDb(id,val){
+  var em=emitters.find(function(e){return e.id===id;});
+  if(em){em.db=parseFloat(val)||0; calculate(); renderSidebar();}
+}
+
+// ===================== CALCULATE =====================
+function calculate(){
+  lineLayer.clearLayers(); drawIsophones();
+  var rv=document.getElementById('result-value'), rb=document.getElementById('result-bar');
+  var rd=document.getElementById('result-desc'), rbg=document.getElementById('result-badge');
+  var fb=document.getElementById('formula-box');
+  if(!receptor||emitters.length===0){
+    rv.innerHTML='— <span class="result-unit">dB(A)</span>'; rv.style.color='var(--muted)';
+    rb.style.width='0%'; rd.textContent='Sin datos suficientes'; rbg.innerHTML='';
+    fb.textContent='L = Lref − Adiv − Aatm − Adif(Maekawa)\nAdiv = 20·log₁₀(d/d₀)  |  Aatm ≈ 1.5 dB/km\nLtotal = 10·log₁₀( Σ 10^(Lᵢ/10) )';
+    renderSidebar(); return;
+  }
+  var d0=parseFloat(document.getElementById('refDist').value)||1;
+  var sh=parseFloat(document.getElementById('srcH').value)||5;
+  var rh=parseFloat(document.getElementById('recH').value)||4;
+  var sumPow=0, lines=[];
+  emitters.forEach(function(em){
+    var d=haversine(em.lat,em.lng,receptor.lat,receptor.lng);
+    var ds=d<1000?d.toFixed(0)+'m':(d/1000).toFixed(2)+'km';
+    var det=levelFromDetail(em,receptor.lat,receptor.lng);
+    sumPow+=Math.pow(10,det.L/10);
+
+    // Construir línea de fórmula detallada
+    var line='E'+em.n+': '+em.db+' − '+det.Adiv.toFixed(1)+'[Adiv]';
+    if(det.Aatm>0.05) line+=' − '+det.Aatm.toFixed(1)+'[Aatm]';
+    if(det.Adif>0.1){
+      var obsLabel=det.obs?
+        (det.obs.type==='terrain'?
+          'terreno z='+det.obs.absH.toFixed(0)+'m exceso='+det.obs.excess.toFixed(1)+'m':
+          'edificio h='+det.obs.buildingHeight.toFixed(0)+'m exceso='+det.obs.excess.toFixed(1)+'m')
+        :'obstáculo';
+      line+=' − '+det.Adif.toFixed(1)+'[Maekawa·'+obsLabel+']';
+    }
+    if(demVisible&&dem){
+      var sz=getElevation(em.lat,em.lng), rz=getElevation(receptor.lat,receptor.lng);
+      line+=' | z_s='+sz.toFixed(0)+'m z_r='+rz.toFixed(0)+'m';
+    }
+    line+=' = '+det.L.toFixed(1)+' dB(A)';
+    lines.push(line);
+
+    // Línea en mapa: azul=bloqueado, naranja=libre
+    var blocked=(det.Adif>0.5);
+    L.polyline([[em.lat,em.lng],[receptor.lat,receptor.lng]],
+      {color:blocked?'rgba(74,144,217,.7)':'rgba(255,107,53,.5)',
+       weight:blocked?2:1.5,dashArray:'4 6'}).addTo(lineLayer);
+
+    // Marcador en la cresta/obstáculo — verde=terreno, amarillo=edificio
+    if(blocked&&det.obs){
+      var bColor=det.obs.type==='terrain'?'#a0c8a0':'#ffd166';
+      L.circleMarker([det.obs.lat,det.obs.lng],
+        {radius:det.obs.type==='building'?6:5,color:bColor,fillColor:bColor,fillOpacity:.9,weight:2})
+        .bindTooltip(
+          (det.obs.type==='terrain'?'🏔 Cresta':'🏢 Edificio')+
+          (det.obs.type==='building'?' h='+det.obs.buildingHeight.toFixed(0)+'m':' z='+det.obs.absH.toFixed(0)+'m')+
+          ' · exceso='+det.obs.excess.toFixed(1)+'m'+
+          ' · Adif='+det.Adif.toFixed(1)+' dB',
+          {className:'leaflet-popup-content-wrapper'}).addTo(lineLayer);
+    }
+  });
+  var Lt=10*Math.log10(sumPow);
+  if(emitters.length>1)lines.push('Σ combinado = '+Lt.toFixed(1)+' dB(A)');
+  var color,desc,badge;
+  if(Lt<45){color='#64b5f6';desc='Muy bajo — ambiente tranquilo';badge=['TRANQUILO','#64b5f6'];}
+  else if(Lt<55){color='#81c784';desc='Bajo — confortable';badge=['BAJO','#81c784'];}
+  else if(Lt<65){color='#fff176';desc='Moderado — perceptible';badge=['MODERADO','#fff176'];}
+  else if(Lt<70){color='#ffb74d';desc='Alto — molesto';badge=['ALTO','#ffb74d'];}
+  else if(Lt<75){color='#ff8a65';desc='Muy alto — perjudicial';badge=['MUY ALTO','#ff8a65'];}
+  else{color='#ef5350';desc='Excesivo — potencialmente dañino';badge=['EXCESIVO','#ef5350'];}
+  rv.innerHTML=Lt.toFixed(1)+' <span class="result-unit">dB(A)</span>'; rv.style.color=color;
+  rb.style.width=Math.min(100,Math.max(0,(Lt-30)/70*100))+'%'; rb.style.background=color;
+  rd.textContent=desc;
+  rbg.innerHTML='<span class="result-badge" style="background:'+badge[1]+'22;color:'+badge[1]+';border:1px solid '+badge[1]+'44">'+badge[0]+'</span>';
+  fb.textContent=lines.join('\n');
+  renderSidebar();
+}
+
+
+// ===================== GEOCODER =====================
+var gcTimer=null, gcMarker=null;
+function geocoderInput(val){
+  clearTimeout(gcTimer);
+  var res=document.getElementById('geocoder-results');
+  if(val.length<3){res.classList.remove('open');res.innerHTML='';return;}
+  gcTimer=setTimeout(function(){
+    fetch('https://nominatim.openstreetmap.org/search?format=json&limit=6&q='+encodeURIComponent(val),
+      {headers:{'Accept-Language':'es'}})
+      .then(function(r){return r.json();})
+      .then(function(data){
+        res.innerHTML='';
+        if(!data.length){res.innerHTML='<div class="gc-item" style="color:var(--muted)">Sin resultados</div>';}
+        data.forEach(function(d){
+          var el=document.createElement('div'); el.className='gc-item';
+          var parts=d.display_name.split(',');
+          el.innerHTML='<b>'+parts[0]+'</b> <span style="color:var(--muted);font-size:11px">'+parts.slice(1,3).join(',')+'</span>';
+          el.onclick=function(){
+            map.setView([parseFloat(d.lat),parseFloat(d.lon)],16);
+            if(gcMarker)map.removeLayer(gcMarker);
+            gcMarker=L.circleMarker([parseFloat(d.lat),parseFloat(d.lon)],
+              {radius:7,color:'#4a90ff',fillColor:'#4a90ff',fillOpacity:.5,weight:2}).addTo(map);
+            setTimeout(function(){if(gcMarker)map.removeLayer(gcMarker);},5000);
+            document.getElementById('geocoder-input').value=parts[0];
+            res.classList.remove('open'); res.innerHTML='';
+          };
+          res.appendChild(el);
+        });
+        res.classList.add('open');
+      }).catch(function(){});
+  },350);
+}
+function closeGeocoder(){
+  var res=document.getElementById('geocoder-results');
+  res.classList.remove('open'); res.innerHTML='';
+  document.getElementById('geocoder-input').value='';
+}
+map.on('click',function(){closeGeocoder();});
+
+renderSidebar();
+
+</script>
+</body>
+</html>
