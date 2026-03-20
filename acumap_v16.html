@@ -303,6 +303,7 @@ function toggleBuildings(){
 }
 
 
+function toggleIgnBase(){
   ignBaseVisible=!ignBaseVisible;
   ignBaseVisible?map.addLayer(ignBaseLayer):map.removeLayer(ignBaseLayer);
   document.getElementById('ign-btn').classList.toggle('active',ignBaseVisible);
